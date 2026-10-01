@@ -22,7 +22,7 @@ The installer uses your own Xbox 360 ISO to extract the game files, apply my men
 
 ## Download and install
 
-I'm preparing the first experimental release. The installer will be available on the [Releases page](https://github.com/samuelitodavila/fifa-street-pc/releases) once it's published.
+My first experimental release is now available. Download **FifaStreet-Setup.exe** from the [release page](https://github.com/samuelitodavila/fifa-street-pc/releases/tag/v0.1.0-experimental).
 
 **You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a Vulkan-capable GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files. An Internet connection may be needed to install Microsoft C++ build components.
 
