@@ -33,13 +33,21 @@ My first experimental release is now available. Download **FifaStreet-Setup.exe*
 
 The installer includes its .NET runtime, SDK and compiler tools. My earlier installation test took around **22 minutes**, but your installation time may vary.
 
-## Screenshots
+## Screenshots and gameplay
 
 <img src="docs/images/installer.png" alt="My FIFA Street installer" width="900">
 
 <img src="docs/images/launcher.png" alt="My FIFA Street PC launcher" width="1000">
 
-<img src="docs/images/gameplay.png" alt="FIFA Street gameplay on PC" width="1000">
+### Gameplay video
+
+I've recorded gameplay from my PC build. Click the image below to download the full video (**MP4, approximately 1.45 GiB**).
+
+<a href="https://github.com/samuelitodavila/fifa-street-pc/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4">
+  <img src="docs/images/gameplay.png" alt="Download my FIFA Street PC gameplay video" width="1000">
+</a>
+
+[Download gameplay video](https://github.com/samuelitodavila/fifa-street-pc/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4)
 
 ## Current status
 
