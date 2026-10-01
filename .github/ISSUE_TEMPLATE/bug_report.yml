@@ -1,0 +1,44 @@
+name: Bug report
+description: Report an installation, launcher or gameplay problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Include text logs and genuine screenshots. Do not attach ISOs, XEX files, extracted game data or generated game code."
+  - type: input
+    id: version
+    attributes:
+      label: Installer version or filename
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does the problem occur?
+      options:
+        - Installation or recompilation
+        - Launcher
+        - Game startup
+        - Gameplay
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: System and game version
+      description: Windows version, CPU, GPU, driver version and FIFA Street region/build.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Describe the steps, expected result and actual result.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and screenshots
+      description: Include the relevant installation/build/game log excerpt. Remove private information before posting.

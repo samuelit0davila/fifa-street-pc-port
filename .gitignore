@@ -1,1 +1,45 @@
-# Temporary bootstrap
+# Game data and original executables
+*.iso
+*.xex
+*.xex.dll
+*.big
+*.bh
+private/
+GameData/
+FIFASTREET/
+
+# Generated guest source; retain only the CMake scaffolding helper
+**/generated/**
+!Installer/recomp-template/generated/
+!Installer/recomp-template/generated/rexglue.cmake
+
+# Local SDK/toolchain and build outputs
+ReXGlue/
+sdk/
+compiler/
+**/bin/
+**/obj/
+**/out/
+build/
+dist/
+publish/
+*.exe
+*.dll
+*.lib
+*.obj
+*.res
+*.pdb
+*.zip
+*.7z
+*.log
+*.log.native
+bundle.zip
+
+# Per-user files
+*.csproj.user
+*.suo
+.vs/
+settings.json
+*.bak
+Thumbs.db
+Desktop.ini

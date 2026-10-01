@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>FifaStreetSetup</AssemblyName>
+    <ApplicationIcon>..\recomp-template\src\fifastreet.ico</ApplicationIcon>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="cover.jpg" LogicalName="cover.jpg" />
+    <EmbeddedResource Include="credit-patch.json.gz" LogicalName="credit-patch.json.gz" />
+    <EmbeddedResource Include="..\recomp-template\src\fifastreet.ico" LogicalName="fifastreet.ico" />
+    <EmbeddedResource Include="bundle.zip" LogicalName="bundle.zip" Condition="Exists('bundle.zip')" />
+  </ItemGroup>
+
+</Project>
