@@ -58,6 +58,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned ReXGlue checkout failed.' }
           git -C ReXGlue -c core.autocrlf=false submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'ReXGlue submodule update failed.' }
+          # The project checkout can convert the patch itself to CRLF on Windows.
+          $patch = Join-Path $PWD 'patches/rexglue-local-changes.patch'
+          $patchText = [System.IO.File]::ReadAllText($patch).Replace("`r`n", "`n")
+          [System.IO.File]::WriteAllText($patch, $patchText, [System.Text.UTF8Encoding]::new($false))
           git -C ReXGlue apply --check ../patches/rexglue-local-changes.patch
           if ($LASTEXITCODE -ne 0) { throw 'ReXGlue patch validation failed.' }
           git -C ReXGlue apply ../patches/rexglue-local-changes.patch
@@ -144,7 +148,7 @@ jobs:
           )
           gh release view $tag --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag @assets --clobber --repo "${{ github.repository }}"
+            Write-Host "Release $tag already exists. Keeping its published installer; the new build is available as a workflow artifact."
           }
           else {
             gh release create $tag @assets `
