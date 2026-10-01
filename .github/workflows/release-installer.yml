@@ -50,11 +50,18 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          git clone --recursive https://github.com/rexglue/rexglue-sdk.git ReXGlue
+          git -c core.autocrlf=false clone --recursive https://github.com/rexglue/rexglue-sdk.git ReXGlue
+          if ($LASTEXITCODE -ne 0) { throw 'ReXGlue clone failed.' }
+          git -C ReXGlue config core.autocrlf false
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to configure ReXGlue line endings.' }
           git -C ReXGlue checkout c94f5ebdcb3c9d1a460ca48e04f9758448f8d518
-          git -C ReXGlue submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned ReXGlue checkout failed.' }
+          git -C ReXGlue -c core.autocrlf=false submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'ReXGlue submodule update failed.' }
           git -C ReXGlue apply --check ../patches/rexglue-local-changes.patch
+          if ($LASTEXITCODE -ne 0) { throw 'ReXGlue patch validation failed.' }
           git -C ReXGlue apply ../patches/rexglue-local-changes.patch
+          if ($LASTEXITCODE -ne 0) { throw 'ReXGlue patch application failed.' }
 
       - name: Build and install base ReXGlue SDK
         shell: pwsh
