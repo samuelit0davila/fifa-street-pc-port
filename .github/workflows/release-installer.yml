@@ -1,0 +1,149 @@
+name: Build and publish installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/release-installer.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Ensure build tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not (Get-Command cmake.exe -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          }
+          if (-not (Get-Command ninja.exe -ErrorAction SilentlyContinue)) {
+            choco install ninja -y
+          }
+          if (-not (Test-Path 'C:\Program Files\LLVM\bin\clang.exe')) {
+            choco install llvm -y
+          }
+          cmake --version
+          ninja --version
+          & 'C:\Program Files\LLVM\bin\clang.exe' --version
+          dotnet --info
+
+      - name: Clone pinned ReXGlue
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git clone --recursive https://github.com/rexglue/rexglue-sdk.git ReXGlue
+          git -C ReXGlue checkout c94f5ebdcb3c9d1a460ca48e04f9758448f8d518
+          git -C ReXGlue submodule update --init --recursive
+          git -C ReXGlue apply --check ../patches/rexglue-local-changes.patch
+          git -C ReXGlue apply ../patches/rexglue-local-changes.patch
+
+      - name: Build and install base ReXGlue SDK
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S ReXGlue --preset win-amd64
+          cmake --build ReXGlue/out/build/win-amd64 --config Release --parallel 2
+          cmake --install ReXGlue/out/build/win-amd64 --config Release
+
+      - name: Build Vulkan ReXGlue runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = (Resolve-Path '.').Path.Replace('\','/')
+          cmake -S ReXGlue -B ReXGlue/out/build/win-amd64-vulkan -G "Ninja Multi-Config" `
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ `
+            -DREXGLUE_USE_VULKAN=ON -DREXGLUE_USE_D3D12=OFF `
+            -DREXGLUE_BUILD_TESTS=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=ON `
+            "-DREXGLUE_OUTPUT_DIRECTORY=$out/ReXGlue/out/win-amd64-vulkan"
+          cmake --build ReXGlue/out/build/win-amd64-vulkan --config Release --parallel 2
+
+      - name: Download extract-xiso
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path Installer/tools | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP 'extract-xiso.zip'
+          $dir = Join-Path $env:RUNNER_TEMP 'extract-xiso'
+          Invoke-WebRequest `
+            -Uri 'https://github.com/XboxDev/extract-xiso/releases/download/build-202609111233/extract-xiso-Win64_Release.zip' `
+            -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          $exe = Get-ChildItem -LiteralPath $dir -Recurse -Filter 'extract-xiso.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'extract-xiso.exe was not found in the downloaded archive.' }
+          Copy-Item -LiteralPath $exe.FullName -Destination 'Installer/tools/extract-xiso.exe' -Force
+
+      - name: Package single-file installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $clangRoot = 'C:\Program Files\LLVM\lib\clang'
+          $clangVersion = (Get-ChildItem -LiteralPath $clangRoot -Directory |
+            Sort-Object { [version]$_.Name } -Descending |
+            Select-Object -First 1).Name
+          if (-not $clangVersion) { throw 'Unable to determine the installed Clang resource version.' }
+          $ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
+          ./Installer/BuildSetup.ps1 `
+            -Output "$PWD/dist/FifaStreet-Setup.exe" `
+            -LLVMRoot 'C:\Program Files\LLVM' `
+            -CMakeRoot 'C:\Program Files\CMake' `
+            -NinjaPath $ninja `
+            -ClangResourceVersion $clangVersion
+          if (-not (Test-Path 'dist/FifaStreet-Setup.exe')) {
+            throw 'FifaStreet-Setup.exe was not created.'
+          }
+          Get-FileHash 'dist/FifaStreet-Setup.exe' -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  FifaStreet-Setup.exe" } |
+            Set-Content -Encoding ascii 'dist/FifaStreet-Setup.exe.sha256'
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FifaStreet-Setup
+          path: |
+            dist/FifaStreet-Setup.exe
+            dist/FifaStreet-Setup.exe.sha256
+          if-no-files-found: error
+
+      - name: Create experimental GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v0.1.0-experimental'
+          $assets = @(
+            'dist/FifaStreet-Setup.exe',
+            'dist/FifaStreet-Setup.exe.sha256'
+          )
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @assets --clobber --repo "${{ github.repository }}"
+          }
+          else {
+            gh release create $tag @assets `
+              --repo "${{ github.repository }}" `
+              --target "${{ github.sha }}" `
+              --title 'FIFA Street Recompiled v0.1.0 Experimental' `
+              --notes-file 'docs/RELEASE-NOTES.md' `
+              --prerelease
+          }
