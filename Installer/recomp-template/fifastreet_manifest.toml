@@ -3,16 +3,21 @@
 [project]
 name = "fifastreet"
 sdk_version = "0.10.0"
-game_root = "../../private"
+game_root = "../fifastreetrecomp/private"
 
 [entrypoint]
-file_path = "../../private/default.xex"
+file_path = "../fifastreetrecomp/private/default.xex"
 out_directory_path = "generated/default"
 includes = []
 
 [[modules]]
 guest_path = "game:\\fifadllzf.xex.dll"
-file_path = "../../private/fifadllzf.xex.dll"
+file_path = "../fifastreetrecomp/private/fifadllzf.xex.dll"
 out_directory_path = "generated/fifadllzf_xex"
 includes = ["config/fifadllzf_overrides.toml"]
 
+[[modules]]
+guest_path = "game:\\FootballCompEngzf.xex.dll"
+file_path = "../fifastreetrecomp/private/FootballCompEngzf.xex.dll"
+out_directory_path = "generated/FootballCompEngzf_xex"
+includes = []
