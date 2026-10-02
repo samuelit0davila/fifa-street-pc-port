@@ -637,7 +637,7 @@ public class LauncherForm : Form
             "Fast",
             "Full"
         });
-        readbackResolveBox.SelectedIndex = 1;
+        readbackResolveBox.SelectedIndex = 3; // Full: validated FIFA Street configuration
 
         readbackMemexportBox.Checked = true;
         readbackMemexportFastBox.Checked = true;
