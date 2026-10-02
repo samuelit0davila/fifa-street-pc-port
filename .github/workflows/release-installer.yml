@@ -80,12 +80,38 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $out = (Resolve-Path '.').Path.Replace('\','/')
+
           cmake -S ReXGlue -B ReXGlue/out/build/win-amd64-vulkan -G "Ninja Multi-Config" `
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ `
-            -DREXGLUE_USE_VULKAN=ON -DREXGLUE_USE_D3D12=OFF `
-            -DREXGLUE_BUILD_TESTS=OFF -DREXGLUE_ENABLE_PERF_COUNTERS=ON `
+            -DCMAKE_C_COMPILER=clang `
+            -DCMAKE_CXX_COMPILER=clang++ `
+            "-DCMAKE_C_FLAGS=-mssse3" `
+            "-DCMAKE_CXX_FLAGS=-mssse3" `
+            -DREXGLUE_USE_VULKAN=ON `
+            -DREXGLUE_USE_D3D12=OFF `
+            -DREXGLUE_BUILD_TESTS=OFF `
+            -DREXGLUE_ENABLE_PERF_COUNTERS=ON `
             "-DREXGLUE_OUTPUT_DIRECTORY=$out/ReXGlue/out/win-amd64-vulkan"
+
           cmake --build ReXGlue/out/build/win-amd64-vulkan --config Release --parallel 2
+
+      - name: Build D3D12 ReXGlue runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = (Resolve-Path '.').Path.Replace('\','/')
+
+          cmake -S ReXGlue -B ReXGlue/out/build/win-amd64-d3d12 -G "Ninja Multi-Config" `
+            -DCMAKE_C_COMPILER=clang `
+            -DCMAKE_CXX_COMPILER=clang++ `
+            "-DCMAKE_C_FLAGS=-mssse3" `
+            "-DCMAKE_CXX_FLAGS=-mssse3" `
+            -DREXGLUE_USE_VULKAN=OFF `
+            -DREXGLUE_USE_D3D12=ON `
+            -DREXGLUE_BUILD_TESTS=OFF `
+            -DREXGLUE_ENABLE_PERF_COUNTERS=ON `
+            "-DREXGLUE_OUTPUT_DIRECTORY=$out/ReXGlue/out/win-amd64-d3d12"
+
+          cmake --build ReXGlue/out/build/win-amd64-d3d12 --config Release --parallel 2
 
       - name: Download extract-xiso
         shell: pwsh
@@ -134,27 +160,3 @@ jobs:
             dist/FifaStreet-Setup.exe
             dist/FifaStreet-Setup.exe.sha256
           if-no-files-found: error
-
-      - name: Create experimental GitHub release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $tag = 'v0.1.0-experimental'
-          $assets = @(
-            'dist/FifaStreet-Setup.exe',
-            'dist/FifaStreet-Setup.exe.sha256'
-          )
-          gh release view $tag --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists. Keeping its published installer; the new build is available as a workflow artifact."
-          }
-          else {
-            gh release create $tag @assets `
-              --repo "${{ github.repository }}" `
-              --target "${{ github.sha }}" `
-              --title 'FIFA Street Recompiled v0.1.0 Experimental' `
-              --notes-file 'docs/RELEASE-NOTES.md' `
-              --prerelease
-          }
