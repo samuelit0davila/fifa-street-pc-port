@@ -1,72 +1,80 @@
 # Validation and known limitations
 
-Last updated: **1 October 2026**. The project is experimental. This record distinguishes source/package checks, observed behavior in the working desktop build, and complete installer testing.
+Last updated: **2 October 2026**. The project remains experimental, but the current installer pipeline has now completed a clean end-to-end validation.
 
 ## Confirmed evidence
 
 | Check | Result | Scope |
 |---|---|---|
-| Earlier full ISO installation | Passed | Extraction, local compilation and both game binaries; predates the latest fixes |
-| Windows x64 publication | Passed | Latest installer and launcher compile/publish successfully |
-| Credits in the game | Observed | Developer's real start-screen and main-menu screenshots |
-| Credit recipe on original data | Passed | Two menu entries only; both outputs match the working build byte for byte; BH companion index matches |
-| Reapplying credits | Passed | Already-patched menus are recognized and skipped |
-| Vulkan library packaging | Passed | Bundled runtime matches the selected build; GPU library matches the working development build |
-| Windowed restoration | User-confirmed | Developer minimized/restored the desktop build successfully after the SDL correction; same corrected runtime packaged |
-| Gameplay scene | Observed | Developer's indoor Barcelona/Real Madrid capture |
-| Child-process cancellation | Passed | Dedicated process cancellation check |
-| Game-file exclusion | Passed | Bundle checked for ISO, original XEX, BIG/BH archives and generated game executables |
-| Optional shortcut | Implemented | End-to-end action after a latest-version completed installation still needs testing |
+| Current full ISO installation | **Passed** | ISO extraction, credit patch, local recompilation, packaging and first launch |
+| Main game executable | **Passed** | `fifastreet.exe` produced by the installer |
+| Main guest DLL | **Passed** | `fifastreet_fifadllzf_xex.dll` produced by the installer |
+| World Tour competition DLL | **Passed** | `fifastreet_FootballCompEngzf_xex.dll` produced from `FootballCompEngzf.xex.dll` |
+| World Tour | **Passed in tested flow** | Bronze/Silver/Gold progression no longer returns to the menu at the previous failure point |
+| Practice | **Passed** | Launched successfully from the clean installation |
+| Credits in the game | **Passed** | Start-screen and main-menu credit patch present |
+| Vulkan runtime packaging | **Passed** | Installer pins the runtime/GPU pair validated with FIFA Street |
+| Resolve readback | **Passed in current configuration** | `readback_resolve = "full"` is the validated configuration |
+| Launcher | **Passed** | Clean installation launched successfully through the included launcher |
+| Game-file exclusion | **Passed** | Public package excludes ISO, original XEX, BIG/BH archives and generated game binaries |
 
-## Windowed freeze investigation
+## World Tour correction
 
-The original report described a freeze after minimizing and restoring a windowed game. An initial change bounded the Vulkan image-acquisition wait; the developer reported that the freeze remained.
+World Tour loads an additional competition-engine module from the game's DLC tree:
 
-A debugger captured the reported process state. The main window thread was still processing messages. Review of the SDL event path found that minimize/restore only notified listeners; it did not explicitly update presentation dimensions or force restoration when a pixel-size event was absent.
+`dlc/dlc_FootballCompEng/dlc/FootballCompEng/FootballCompEngzf.xex.dll`
 
-The subsequent correction updates presentation dimensions to zero on minimize, reads the actual pixel dimensions on restore, and requests a repaint. The developer then reported: **“Já restaura normalmente”** (“It now restores normally”). This is a confirmed user test on the working desktop build, not coverage of every window manager, driver or GPU.
+Earlier builds recompiled the main executable and `fifadllzf.xex.dll` but did not provide a recompiled host module for this dynamically loaded guest DLL. The current pipeline detects that module, includes it in the ReXGlue manifest, generates its guest source and builds:
 
-## Installation-time observation
+`fifastreet_FootballCompEngzf_xex.dll`
 
-| Event | Local timestamp |
-|---|---|
-| `installation.log` created | 14:58:59 |
-| Build workspace created | 14:59:41 |
-| Build transcript ended | 15:21:10 |
-| Last log update with success/cleanup-start output | 15:21:11 |
-| Approximate time to success | **22 minutes, 12 seconds** |
-| Date / timezone | 1 October 2026 / Europe/Lisbon, UTC+01:00 |
+The `fifadllzf`-specific stubs are intentionally not attached to this independent module.
 
-That run produced `fifastreet.exe`, `fifastreet_fifadllzf_xex.dll` and runtime libraries. It reached the last build step and reported installation success. The time uses filesystem timestamps and log contents; final cleanup was not separately timed. The latest renderer/menu/restore changes came afterwards.
+## Current clean-install validation
 
-## Screenshot evidence
+The current setup was tested through the complete player-facing path:
 
-- `start-screen.png`: real Windows capture, showing the start-screen credit.
-- `main-menu.png`: real Windows capture, showing the bottom-left menu credit.
-- `gameplay.png`: real indoor-match scene. Its overlay reports **78.3 recent FPS**, which is a single sample rather than a benchmark.
-- Installer and launcher images: actual application interfaces rendered for visual inspection. Advanced/compatibility panels were captured from an earlier UI revision.
+1. Select an original FIFA Street Xbox 360 ISO.
+2. Extract the game data.
+3. Apply the start-screen and main-menu credit patch.
+4. Recompile the main executable.
+5. Recompile `fifadllzf.xex.dll`.
+6. Recompile `FootballCompEngzf.xex.dll`.
+7. Install the validated Vulkan runtime/GPU pair.
+8. Start the dedicated launcher.
+9. Launch the game.
+10. Test menus, Practice and World Tour.
 
-The game captures were supplied by SAMUELITODAVILA and copied unchanged. They were not generated by AI. They come from the working desktop build and do not independently prove that the latest installer reproduces every behavior.
+That workflow completed successfully on the developer's test system.
+
+## Renderer/runtime configuration
+
+The release packaging script verifies the validated runtime files before creating the installer:
+
+- `rexruntime.dll` SHA-256: `115722CC5905D07FC6A6212B47692FFE6405DD1BA9F87CDA97F8DA2C25E4767A`
+- `rexgpu-xenos.dll` SHA-256: `71FA61D82FF6134F1F407D682ACEBAC01F2B3B2DCEFCC34151A0C082B746BDD2`
+
+The current known-good game configuration uses full resolve readback.
 
 ## Remaining validation
 
-- Complete the latest candidate's installation from ISO, then check first launch, credits, internal resolution and window restoration.
-- Exercise prerequisite installation on a clean Windows PC.
-- Verify complete matches, more game modes and venues, audio, controller mapping, saves, loading and repeated launches.
+- Test more World Tour events and a longer career progression.
+- Exercise prerequisite installation on additional clean Windows systems.
+- Verify more complete matches, venues, audio, controller mappings, saves and repeated launches.
 - Validate individual graphics controls and ultrawide output.
-- Record supported ISO regions/revisions. The credit recipe currently rejects unknown menu hashes.
-- Complete the exact-version third-party release-notice audit before public distribution.
+- Record supported ISO regions/revisions. The credit recipe rejects unknown menu hashes.
+- Continue hardware/driver testing beyond the developer's current system.
 
 ## Known limitations
 
 - No universal hardware/driver or frame-rate guarantee.
 - No verified online-play support.
-- The renderer uses integer multiples of the game's 1280×720 base; intermediate outputs are resized from a larger internal image.
+- The renderer uses integer multiples of the game's 1280×720 base for internal scaling.
 - Some SDK controls may not apply to the Vulkan backend or may need title-specific testing.
-- Generated stubs and recompilation warnings remain; their gameplay impact is not fully established.
-- Cancellation/failure may leave incomplete installation files and diagnostic workspaces.
-- The destination's 12 GB minimum check is not a measured maximum; temporary extraction/build/archive replacement also needs free space.
+- Generated recompilation warnings remain and should continue to be investigated.
+- Cancellation/failure may leave incomplete diagnostic workspaces.
+- Free-space requirements depend on extraction, compilation and temporary packaging.
 
 ## Development method
 
-SAMUELITODAVILA directed and tested the project with AI assistance from ChatGPT and OpenAI Codex. AI assisted coding, debugging, verification and documentation; the evidence above identifies what was actually checked.
+SAMUELITODAVILA directed and tested the project with AI assistance from ChatGPT and OpenAI Codex. The validation statements above distinguish what was actually tested from areas that still need broader coverage.
