@@ -1,38 +1,23 @@
-# FIFA Street Recompiled — Experimental Windows Installer
+# FIFA Street Recompiled v0.2.0 Experimental
 
-**PORTED BY: SAMUELITODAVILA**  
-**Developed with AI assistance from ChatGPT and OpenAI Codex.**
+This experimental update fixes the World Tour failure found in the previous PC build.
 
-An experimental Windows x64 port of FIFA Street (2012), powered by ReXGlue. Select your own Xbox 360 ISO and an installation folder; the installer extracts your files, applies the project credits and recompiles the game locally.
+## Changes
 
-## Included
+- Fixed the World Tour crash/return-to-menu encountered during Bronze/Silver/Gold progression.
+- Added discovery and recompilation of `FootballCompEngzf.xex.dll`, the additional competition-engine module used by World Tour.
+- The installer now builds and validates `fifastreet_FootballCompEngzf_xex.dll` alongside the main executable and `fifastreet_fifadllzf_xex.dll`.
+- Kept the validated Vulkan runtime/GPU pair.
+- Kept `readback_resolve = "full"` as the validated resolve-readback configuration.
+- Completed a clean end-to-end installation from an original Xbox 360 FIFA Street ISO.
+- Confirmed launcher startup, menus, Practice and World Tour on the clean installation.
 
-- English graphical installer and launcher with Messi artwork and FIFA Street icons.
-- Local generation of `fifastreet.exe` and `fifastreet_fifadllzf_xex.dll`.
-- Public extraction, SDK and compiler tools, with a self-contained .NET runtime.
-- Vulkan graphics/runtime libraries from the working development build.
-- Output/window resolution linked to the internal integer render scale; internal size displayed in the launcher.
-- `PORTED BY: SAMUELITODAVILA` on the start screen and main menu, applied locally from a small difference recipe.
-- SDL minimize/restore correction included in the runtime.
-- Progress, logs, cancellation and an optional desktop shortcut.
+## Installation
 
-## Evidence
+Download **FifaStreetSetup.exe**, run it, select your own Xbox 360 FIFA Street ISO and choose a new or empty installation directory.
 
-Real developer captures show the start screen, credited main menu and indoor gameplay. The credit patch was verified against the working game, and the developer confirmed window restoration after the SDL fix. The same corrected runtime is included in this installer.
+No ISO, original game data, XEX files, BIG/BH archives or generated game binaries are distributed with this project.
 
-An earlier complete installer run reached success in approximately **22 minutes and 12 seconds**. That measurement predates the latest fixes. The gameplay screenshot's **78.3 recent FPS** is a single sample, not a promised or sustained frame rate.
+## Status
 
-## Install
-
-1. Open the release installer and select your own supported FIFA Street ISO.
-2. Choose a new or empty installation folder and click **INSTALL FIFA STREET**.
-3. Wait for extraction, credit patching and local recompilation.
-4. After success, optionally select **Create desktop shortcut**, then **OPEN LAUNCHER**.
-
-## Current limits
-
-Mark the first public release **Pre-release**. The latest complete ISO installation test, clean-PC prerequisite setup, full game-mode coverage, save/load, audio/controller coverage and a supported ISO/hardware list remain pending. Integer render scaling means intermediate output resolutions use a larger internal image, resized for display.
-
-Cancelled or failed installs can leave incomplete files. Include `installation.log`, game/build logs and reproduction steps in bug reports. Do not attach game files.
-
-No ISO, original XEX, extracted game archive or generated guest code is included. Project-authored code uses MIT; third-party components retain their licenses. See the README and license notices.
+This is still an experimental PC port. Broader hardware, controller, audio, save, venue and long-session testing is still in progress.
