@@ -22,32 +22,72 @@ dotnet publish (Join-Path $projectRoot 'Launcher\FifaStreetLauncher\FifaStreetLa
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar o launcher.' }
 Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter '*.pdb' | Remove-Item
 
+# Use the installed public SDK layout, with the current runtime and code generator.
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\out\install\win-amd64') -Destination (Join-Path $stage 'sdk') -Recurse
 $current = Join-Path $projectRoot 'ReXGlue\out\win-amd64'
 foreach ($name in @('rexglue.exe','rexruntime.dll','rexgpu-xenos.dll','TracyClient.dll')) { Copy-Item -LiteralPath (Join-Path $current $name) -Destination (Join-Path $stage 'sdk\bin') -Force }
 Get-ChildItem -LiteralPath $current -Filter '*.lib' | Copy-Item -Destination (Join-Path $stage 'sdk\lib') -Force
+# Package both graphics backends validated with FIFA Street.
+$backendRoot = Join-Path $stage 'sdk\backends'
+$d3d12Package = Join-Path $backendRoot 'D3D12'
+$vulkanPackage = Join-Path $backendRoot 'Vulkan'
 
+New-Item -ItemType Directory -Path $d3d12Package -Force | Out-Null
+New-Item -ItemType Directory -Path $vulkanPackage -Force | Out-Null
+
+$d3d12 = Join-Path $projectRoot 'ReXGlue\out\win-amd64-d3d12\Release'
 $vulkan = Join-Path $projectRoot 'ReXGlue\out\win-amd64-vulkan\Release'
-foreach ($name in @('rexruntime.dll','rexgpu-xenos.dll')) {
-    Copy-Item -LiteralPath (Join-Path $vulkan $name) -Destination (Join-Path $stage 'sdk\bin') -Force
-}
-$expectedRuntimeHashes = @{
-    'rexruntime.dll'   = '115722CC5905D07FC6A6212B47692FFE6405DD1BA9F87CDA97F8DA2C25E4767A'
-    'rexgpu-xenos.dll' = '71FA61D82FF6134F1F407D682ACEBAC01F2B3B2DCEFCC34151A0C082B746BDD2'
-}
-foreach ($name in $expectedRuntimeHashes.Keys) {
-    $packaged = Join-Path $stage "sdk\bin\$name"
-    $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $packaged).Hash
-    if ($actual -ne $expectedRuntimeHashes[$name]) {
-        throw "$name is not the validated FIFA Street runtime. Expected $($expectedRuntimeHashes[$name]), got $actual"
+
+$expectedBackends = @{
+    'D3D12' = @{
+        Source = $d3d12
+        Destination = $d3d12Package
+        RuntimeHash = '790B6B1B13765249160E53DCE6F28AF0F03B66D5D1AEDB1054949C50B13F04E8'
+        GpuHash = '461A88F1D27C605106453B0F3C92BD72BD4BC166DCDC0BBF01E825BCEFB8418D'
+    }
+    'Vulkan' = @{
+        Source = $vulkan
+        Destination = $vulkanPackage
+        RuntimeHash = '115722CC5905D07FC6A6212B47692FFE6405DD1BA9F87CDA97F8DA2C25E4767A'
+        GpuHash = '71FA61D82FF6134F1F407D682ACEBAC01F2B3B2DCEFCC34151A0C082B746BDD2'
     }
 }
+
+foreach ($backendName in @('D3D12', 'Vulkan')) {
+    $backend = $expectedBackends[$backendName]
+
+    foreach ($name in @('rexruntime.dll', 'rexgpu-xenos.dll')) {
+        $source = Join-Path $backend.Source $name
+
+        if (!(Test-Path -LiteralPath $source)) {
+            throw "$backendName backend is missing: $source"
+        }
+
+        Copy-Item -LiteralPath $source -Destination $backend.Destination -Force
+    }
+
+    $runtimeFile = Join-Path $backend.Destination 'rexruntime.dll'
+    $gpuFile = Join-Path $backend.Destination 'rexgpu-xenos.dll'
+
+    $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeFile).Hash
+    $gpuHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $gpuFile).Hash
+
+    if ($runtimeHash -ne $backend.RuntimeHash) {
+        throw "$backendName rexruntime.dll hash mismatch. Expected $($backend.RuntimeHash), got $runtimeHash"
+    }
+
+    if ($gpuHash -ne $backend.GpuHash) {
+        throw "$backendName rexgpu-xenos.dll hash mismatch. Expected $($backend.GpuHash), got $gpuHash"
+    }
+}
+
+# Keep the Vulkan import libraries in the SDK used to compile the game.
+# The runtime DLLs themselves are installed from sdk\backends.
 foreach ($name in @('rexruntime.lib','rexgpu-xenos.lib')) {
     Copy-Item -LiteralPath (Join-Path $vulkan $name) -Destination (Join-Path $stage 'sdk\lib') -Force
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\include\rex') -Destination (Join-Path $stage 'sdk\include') -Recurse -Force
 Get-ChildItem -LiteralPath (Join-Path $stage 'sdk\bin') -Filter 'rexglue.before*' | Remove-Item
-
 New-Item -ItemType Directory -Path (Join-Path $stage 'compiler\bin') -Force | Out-Null
 foreach ($name in @('clang.exe','clang++.exe','lld-link.exe','llvm-rc.exe','llvm-mt.exe')) { Copy-Item -LiteralPath "C:\Program Files\LLVM\bin\$name" -Destination (Join-Path $stage 'compiler\bin') }
 New-Item -ItemType Directory -Path (Join-Path $stage 'compiler\lib\clang') -Force | Out-Null
@@ -55,7 +95,6 @@ Copy-Item -LiteralPath 'C:\Program Files\LLVM\lib\clang\23' -Destination (Join-P
 foreach ($name in @('cmake.exe','cmcldeps.exe')) { Copy-Item -LiteralPath "C:\Program Files\CMake\bin\$name" -Destination (Join-Path $stage 'compiler\bin') }
 Copy-Item -LiteralPath 'C:\Program Files\CMake\share' -Destination (Join-Path $stage 'compiler\share') -Recurse
 Copy-Item -LiteralPath 'C:\Users\Samuel M\miniconda3\Library\bin\ninja.exe' -Destination (Join-Path $stage 'compiler\bin')
-
 New-Item -ItemType Directory -Path (Join-Path $stage 'licenses') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'FifaStreetSetupTool\ThirdParty\MonoGame-LICENSE.txt') -Destination (Join-Path $stage 'licenses\MonoGame-LZX-MS-PL.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\LICENSE') -Destination (Join-Path $stage 'licenses\ReXGlue.txt')

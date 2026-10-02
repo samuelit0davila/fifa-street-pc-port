@@ -36,10 +36,13 @@ function Invoke-BuildTool {
 }
 
 $installerRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
 $template = Join-Path $installerRoot "recomp-template"
+
 $rexGlueSource = if ($env:REXSDK_DIR) { [IO.Path]::GetFullPath($env:REXSDK_DIR) } else {
     "C:\Users\Samuel M\Desktop\FIFASTREET - 2012\ReXGlue"
 }
+
 $bundledSdk = Join-Path $installerRoot 'sdk'
 $bundledTools = Join-Path $installerRoot 'compiler'
 $useBundledSdk = Test-Path -LiteralPath (Join-Path $bundledSdk 'bin\rexglue.exe')
@@ -47,21 +50,33 @@ $llvmBin = if (Test-Path -LiteralPath $bundledTools) { Join-Path $bundledTools '
 
 $clang = Join-Path $llvmBin "clang.exe"
 $clangxx = Join-Path $llvmBin "clang++.exe"
-if (!(Test-Path $clang)) { throw "clang.exe not found at $clang" }
-if (!(Test-Path $clangxx)) { throw "clang++.exe not found at $clangxx" }
+
+if (!(Test-Path $clang)) {
+    throw "clang.exe not found at $clang"
+}
+
+if (!(Test-Path $clangxx)) {
+    throw "clang++.exe not found at $clangxx"
+}
 
 $env:PATH = "$llvmBin;$env:PATH"
 if ($useBundledSdk) { $env:PATH = "$(Join-Path $bundledSdk 'bin');$env:PATH" }
 
 $shortTempRoot = if ($env:FIFA_BUILD_ROOT) { $env:FIFA_BUILD_ROOT } else { "C:\FSTRB" }
-if (!(Test-Path $shortTempRoot)) { New-Item -ItemType Directory -Path $shortTempRoot -Force | Out-Null }
+
+if (!(Test-Path $shortTempRoot)) {
+    New-Item -ItemType Directory -Path $shortTempRoot -Force | Out-Null
+}
 
 $resume = ![string]::IsNullOrWhiteSpace($Workspace)
 $workRoot = if ($resume) { [IO.Path]::GetFullPath($Workspace) } else {
     Join-Path $shortTempRoot ([guid]::NewGuid().ToString("N").Substring(0, 8))
 }
+
 $workProject = Join-Path $workRoot "FifaStreetRex"
-if ($resume -and !(Test-Path -LiteralPath (Join-Path $workProject 'CMakeLists.txt'))) { throw "Invalid build workspace: $workRoot" }
+if ($resume -and !(Test-Path -LiteralPath (Join-Path $workProject 'CMakeLists.txt'))) {
+    throw "Invalid build workspace: $workRoot"
+}
 $GameData = [IO.Path]::GetFullPath($GameData)
 $Output = [IO.Path]::GetFullPath($Output)
 
@@ -71,20 +86,38 @@ Write-Host " FIFA Street PC - Recomp Build"
 Write-Host "======================================"
 Write-Host ""
 
-if (!(Test-Path $GameData)) { throw "GameData does not exist: $GameData" }
+if (!(Test-Path $GameData)) {
+    throw "GameData does not exist: $GameData"
+}
 
 $defaultXex = Join-Path $GameData "default.xex"
 $fifaDll = Join-Path $GameData "fifadllzf.xex.dll"
 $footballCompDll = Join-Path $GameData "dlc\dlc_FootballCompEng\dlc\FootballCompEng\FootballCompEngzf.xex.dll"
 
-if (!(Test-Path $defaultXex)) { throw "default.xex was not found." }
-if (!(Test-Path $fifaDll)) { throw "fifadllzf.xex.dll was not found." }
-if (!(Test-Path $footballCompDll)) { throw "FootballCompEngzf.xex.dll was not found. This module is required for World Tour." }
-if (!(Test-Path $template)) { throw "recomp-template was not found: $template" }
-if (!$useBundledSdk -and !(Test-Path $rexGlueSource)) { throw "ReXGlue source was not found: $rexGlueSource" }
+if (!(Test-Path $defaultXex)) {
+    throw "default.xex was not found."
+}
+
+if (!(Test-Path $fifaDll)) {
+    throw "fifadllzf.xex.dll was not found."
+}
+
+if (!(Test-Path $footballCompDll)) {
+    throw "FootballCompEngzf.xex.dll was not found. This module is required for World Tour."
+}
+
+if (!(Test-Path $template)) {
+    throw "recomp-template was not found: $template"
+}
+
+if (!$useBundledSdk -and !(Test-Path $rexGlueSource)) {
+    throw "ReXGlue source was not found: $rexGlueSource"
+}
 
 Write-Host "[1/6] Preparing temporary workspace..."
+
 New-Item -ItemType Directory -Path $workProject -Force | Out-Null
+
 Get-ChildItem -LiteralPath $template | Where-Object { $_.Name -ne 'fifastreet_manifest.toml' } |
     Copy-Item -Destination $workProject -Recurse -Force
 
@@ -100,7 +133,9 @@ trap {
 }
 
 Write-Host "[2/6] Preparing manifest..."
+
 $manifestPath = Join-Path $workProject "fifastreet_manifest.toml"
+
 $gameDataUnix = $GameData.Replace("\", "/").Replace('"', '\"')
 
 $manifest = @"
@@ -129,7 +164,9 @@ includes = []
 
 $manifest = $manifest.Replace("`r`n", "`n")
 $manifestChanged = !$resume -or [IO.File]::ReadAllText($manifestPath).Replace("`r`n", "`n").Trim() -ne $manifest.Trim()
-if ($manifestChanged) { [System.IO.File]::WriteAllText($manifestPath, $manifest, [System.Text.UTF8Encoding]::new($false)) }
+if ($manifestChanged) {
+    [System.IO.File]::WriteAllText($manifestPath, $manifest, [System.Text.UTF8Encoding]::new($false))
+}
 
 Write-Host ""
 Write-Host "Manifest:"
@@ -137,20 +174,33 @@ Get-Content $manifestPath
 Write-Host ""
 
 Write-Host "[3/6] Cleaning previous generated code..."
+
 $generatedDefault = Join-Path $workProject "generated\default"
 $generatedDll = Join-Path $workProject "generated\fifadllzf_xex"
 $generatedFootballComp = Join-Path $workProject "generated\FootballCompEngzf_xex"
 
-foreach ($generated in @($generatedDefault,$generatedDll,$generatedFootballComp)) {
-    if (!$resume -and (Test-Path $generated)) {
-        if (![IO.Path]::GetFullPath($generated).StartsWith($workProject + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe generated path' }
-        Remove-Item $generated -Recurse -Force
-    }
+if (!$resume -and (Test-Path $generatedDefault)) {
+    if (![IO.Path]::GetFullPath($generatedDefault).StartsWith($workProject + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe generated path' }
+    Remove-Item $generatedDefault -Recurse -Force
+}
+
+if (!$resume -and (Test-Path $generatedDll)) {
+    if (![IO.Path]::GetFullPath($generatedDll).StartsWith($workProject + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe generated path' }
+    Remove-Item $generatedDll -Recurse -Force
+}
+
+if (!$resume -and (Test-Path $generatedFootballComp)) {
+    if (![IO.Path]::GetFullPath($generatedFootballComp).StartsWith($workProject + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe generated path' }
+    Remove-Item $generatedFootballComp -Recurse -Force
 }
 
 Write-Host "[4/6] Configuring build..."
+
 Push-Location $workProject
+
 try {
+
+    # Generate sources before configuration so CMake discovers both binaries.
     $codegen = if ($useBundledSdk) { Join-Path $bundledSdk 'bin\rexglue.exe' } else { Join-Path $rexGlueSource 'out\win-amd64\rexglue.exe' }
     if (!(Test-Path -LiteralPath $codegen)) { throw "ReXGlue code generator not found: $codegen" }
     if ($manifestChanged -or !(Test-Path -LiteralPath (Join-Path $generatedDefault 'sources.cmake')) -or
@@ -168,46 +218,124 @@ try {
     Write-Host ""
     Write-Host "[5/6] Compiling FIFA Street..."
     Write-Host ""
+
     Invoke-BuildTool 'cmake' @('--build', '--preset', 'win-amd64-release', '--parallel', "$Jobs")
+
 }
-finally { Pop-Location }
+finally {
+    Pop-Location
+}
 
 $buildFolder = Join-Path $workProject "out\build\win-amd64-release"
+
 $exe = Join-Path $buildFolder "fifastreet.exe"
+
 $dll = Join-Path $buildFolder "fifastreet_fifadllzf_xex.dll"
 $footballCompOut = Join-Path $buildFolder "fifastreet_FootballCompEngzf_xex.dll"
 
-if (!(Test-Path $exe)) { throw "The build finished but fifastreet.exe was not found." }
-if (!(Test-Path $dll)) { throw "The build finished but fifastreet_fifadllzf_xex.dll was not found." }
-if (!(Test-Path $footballCompOut)) { throw "The build finished but fifastreet_FootballCompEngzf_xex.dll was not found." }
+if (!(Test-Path $exe)) {
+    throw "The build finished but fifastreet.exe was not found."
+}
+
+if (!(Test-Path $dll)) {
+    throw "The build finished but fifastreet_fifadllzf_xex.dll was not found."
+}
+
+if (!(Test-Path $footballCompOut)) {
+    throw "The build finished but fifastreet_FootballCompEngzf_xex.dll was not found."
+}
 
 Write-Host ""
 Write-Host "[6/6] Installing game binaries..."
-New-Item -ItemType Directory -Path $Output -Force | Out-Null
+
+New-Item `
+    -ItemType Directory `
+    -Path $Output `
+    -Force | Out-Null
+
 Copy-Item $exe $Output -Force
 
+# Copy the recompiled game modules.
 Get-ChildItem -LiteralPath $buildFolder -Filter '*.dll' -File |
     Where-Object { $_.Name -notin @('rexruntime.dll', 'rexgpu-xenos.dll') } |
     Copy-Item -Destination $Output -Force
 
-$validatedRuntimeRoot = Join-Path $bundledSdk 'bin'
-$validatedRuntime = Join-Path $validatedRuntimeRoot 'rexruntime.dll'
-$validatedGpu = Join-Path $validatedRuntimeRoot 'rexgpu-xenos.dll'
-if (!(Test-Path -LiteralPath $validatedRuntime)) { throw "Validated rexruntime.dll was not found: $validatedRuntime" }
-if (!(Test-Path -LiteralPath $validatedGpu)) { throw "Validated rexgpu-xenos.dll was not found: $validatedGpu" }
+# Install both validated graphics backends.
+$bundledBackends = Join-Path $bundledSdk 'backends'
+$outputBackends = Join-Path $Output 'Backends'
 
-Copy-Item $validatedRuntime (Join-Path $Output 'rexruntime.dll') -Force
-Copy-Item $validatedGpu (Join-Path $Output 'rexgpu-xenos.dll') -Force
+New-Item -ItemType Directory -Path $outputBackends -Force | Out-Null
 
+$expectedBackends = @{
+    'D3D12' = @{
+        RuntimeHash = '790B6B1B13765249160E53DCE6F28AF0F03B66D5D1AEDB1054949C50B13F04E8'
+        GpuHash = '461A88F1D27C605106453B0F3C92BD72BD4BC166DCDC0BBF01E825BCEFB8418D'
+    }
+    'Vulkan' = @{
+        RuntimeHash = '115722CC5905D07FC6A6212B47692FFE6405DD1BA9F87CDA97F8DA2C25E4767A'
+        GpuHash = '71FA61D82FF6134F1F407D682ACEBAC01F2B3B2DCEFCC34151A0C082B746BDD2'
+    }
+}
+
+foreach ($backendName in @('D3D12', 'Vulkan')) {
+    $sourceBackend = Join-Path $bundledBackends $backendName
+    $destinationBackend = Join-Path $outputBackends $backendName
+
+    $sourceRuntime = Join-Path $sourceBackend 'rexruntime.dll'
+    $sourceGpu = Join-Path $sourceBackend 'rexgpu-xenos.dll'
+
+    if (!(Test-Path -LiteralPath $sourceRuntime)) {
+        throw "$backendName rexruntime.dll was not found: $sourceRuntime"
+    }
+
+    if (!(Test-Path -LiteralPath $sourceGpu)) {
+        throw "$backendName rexgpu-xenos.dll was not found: $sourceGpu"
+    }
+
+    $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceRuntime).Hash
+    $gpuHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceGpu).Hash
+
+    if ($runtimeHash -ne $expectedBackends[$backendName].RuntimeHash) {
+        throw "$backendName rexruntime.dll is not the validated runtime."
+    }
+
+    if ($gpuHash -ne $expectedBackends[$backendName].GpuHash) {
+        throw "$backendName rexgpu-xenos.dll is not the validated GPU backend."
+    }
+
+    New-Item -ItemType Directory -Path $destinationBackend -Force | Out-Null
+
+    Copy-Item -LiteralPath $sourceRuntime `
+        -Destination (Join-Path $destinationBackend 'rexruntime.dll') `
+        -Force
+
+    Copy-Item -LiteralPath $sourceGpu `
+        -Destination (Join-Path $destinationBackend 'rexgpu-xenos.dll') `
+        -Force
+}
+
+# D3D12 is the launcher's default graphics API, so install it as the
+# initially active backend beside fifastreet.exe.
+Copy-Item `
+    -LiteralPath (Join-Path $outputBackends 'D3D12\rexruntime.dll') `
+    -Destination (Join-Path $Output 'rexruntime.dll') `
+    -Force
+
+Copy-Item `
+    -LiteralPath (Join-Path $outputBackends 'D3D12\rexgpu-xenos.dll') `
+    -Destination (Join-Path $Output 'rexgpu-xenos.dll') `
+    -Force
 Write-Host ""
 Write-Host "======================================"
 Write-Host " BUILD COMPLETE"
 Write-Host "======================================"
 Write-Host ""
+
 Write-Host "Created:"
 Write-Host "  $(Join-Path $Output 'fifastreet.exe')"
 Write-Host "  $(Join-Path $Output 'fifastreet_fifadllzf_xex.dll')"
 Write-Host "  $(Join-Path $Output 'fifastreet_FootballCompEngzf_xex.dll')"
+
 Write-Host ""
 Write-Host "Temporary workspace:"
 Write-Host $workRoot

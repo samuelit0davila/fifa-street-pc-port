@@ -26,10 +26,11 @@ public class LauncherForm : Form
     private readonly ComboBox refreshBox = new();
     private readonly ComboBox displayModeBox = new();
     private readonly ComboBox monitorBox = new();
+    private readonly ComboBox graphicsApiBox = new();
     private readonly ComboBox gpuBox = new();
     private readonly List<int> gpuAdapterIndices = new();
     private readonly ComboBox postEffectBox = new();
-    private readonly ComboBox readbackResolveBox = new();
+    private readonly ComboBox internalResolutionBox = new();
 
     private readonly CheckBox vsyncBox = new();
     private readonly CheckBox vrrBox = new();
@@ -54,7 +55,6 @@ public class LauncherForm : Form
 
     private bool advancedVisible;
     private bool compatibilityVisible;
-    private string renderTargetPath = "rov";
 
     private string SettingsPath =>
         Path.Combine(AppContext.BaseDirectory, "settings.json");
@@ -64,9 +64,9 @@ public class LauncherForm : Form
         Text = "FIFA Street Launcher";
         using (var icon = typeof(LauncherForm).Assembly.GetManifestResourceStream("fifastreet.ico")!)
             Icon = new Icon(icon);
-        ClientSize = new Size(1250, 690);
-        MinimumSize = new Size(1266, 729);
-        MaximumSize = new Size(1266, 930);
+        ClientSize = new Size(1250, 720);
+        MinimumSize = new Size(1266, 759);
+        MaximumSize = new Size(1266, 960);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -136,75 +136,83 @@ public class LauncherForm : Form
         hardwareLabel.Font = new Font("Segoe UI", 9.5F);
         hardwareLabel.AutoEllipsis = true;
         hardwareLabel.TextAlign = ContentAlignment.MiddleRight;
-        hardwareLabel.Location = new Point(500, 75);
-        hardwareLabel.Size = new Size(400, 52);
+        hardwareLabel.Location = new Point(455, 72);
+        hardwareLabel.Size = new Size(445, 24);
         Controls.Add(hardwareLabel);
 
-        var displayCard = CreateCard(new Point(40, 145), new Size(410, 330));
+        var displayCard = CreateCard(new Point(40, 145), new Size(420, 360));
         Controls.Add(displayCard);
 
         AddSectionHeader(displayCard, "DISPLAY", "Display settings", 24, 20);
 
         AddFieldLabel(displayCard, "Resolution", 24, 82);
-        ConfigureCombo(resolutionBox, 24, 106, 362);
+        ConfigureCombo(resolutionBox, 24, 106, 372);
         displayCard.Controls.Add(resolutionBox);
 
         AddFieldLabel(displayCard, "Refresh rate", 24, 150);
-        ConfigureCombo(refreshBox, 24, 174, 175);
+        ConfigureCombo(refreshBox, 24, 174, 180);
         displayCard.Controls.Add(refreshBox);
 
-        AddFieldLabel(displayCard, "Display mode", 211, 150);
-        ConfigureCombo(displayModeBox, 211, 174, 175);
+        AddFieldLabel(displayCard, "Display mode", 216, 150);
+        ConfigureCombo(displayModeBox, 216, 174, 180);
         displayCard.Controls.Add(displayModeBox);
 
         AddFieldLabel(displayCard, "Monitor", 24, 218);
-        ConfigureCombo(monitorBox, 24, 242, 362);
+        ConfigureCombo(monitorBox, 24, 242, 372);
         displayCard.Controls.Add(monitorBox);
 
-        ConfigureCheck(vsyncBox, "VSync", 24, 288);
-        ConfigureCheck(vrrBox, "VRR / Tearing", 198, 288);
+        ConfigureCheck(vsyncBox, "VSync", 24, 300);
+        ConfigureCheck(vrrBox, "VRR / Tearing", 216, 300);
         displayCard.Controls.Add(vsyncBox);
         displayCard.Controls.Add(vrrBox);
 
-        var graphicsCard = CreateCard(new Point(470, 145), new Size(430, 330));
+        var graphicsCard = CreateCard(new Point(480, 145), new Size(420, 360));
         Controls.Add(graphicsCard);
 
         AddSectionHeader(graphicsCard, "GRAPHICS", "Quality and presentation", 24, 20);
 
-        AddFieldLabel(graphicsCard, "GPU", 24, 82);
-        ConfigureCombo(gpuBox, 24, 106, 382);
+        AddFieldLabel(graphicsCard, "Graphics API", 24, 82);
+        ConfigureCombo(graphicsApiBox, 24, 106, 120);
+        graphicsCard.Controls.Add(graphicsApiBox);
+
+        AddFieldLabel(graphicsCard, "GPU", 156, 82);
+        ConfigureCombo(gpuBox, 156, 106, 240);
         graphicsCard.Controls.Add(gpuBox);
 
-        AddFieldLabel(graphicsCard, "Post-processing", 24, 150);
-        ConfigureCombo(postEffectBox, 24, 174, 382);
-        graphicsCard.Controls.Add(postEffectBox);
+AddFieldLabel(graphicsCard, "Post-processing", 24, 150);
+ConfigureCombo(postEffectBox, 24, 174, 372);
+graphicsCard.Controls.Add(postEffectBox);
 
-        ConfigureCheck(msaaBox, "Native 2x MSAA", 24, 233);
-        graphicsCard.Controls.Add(msaaBox);
+AddFieldLabel(graphicsCard, "Internal Resolution", 24, 218);
+ConfigureCombo(internalResolutionBox, 24, 242, 372);
+graphicsCard.Controls.Add(internalResolutionBox);
 
-        var fpsTitle = new Label
-        {
-            Text = "FPS",
-            ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 9F),
-            AutoSize = true,
-            Location = new Point(24, 280)
-        };
-        graphicsCard.Controls.Add(fpsTitle);
+ConfigureCheck(msaaBox, "Native 2x MSAA", 24, 300);
+graphicsCard.Controls.Add(msaaBox);
 
-        var fpsInfo = new Label
-        {
-            Text = "Controlled by the game, VSync and refresh rate",
-            ForeColor = TextSecondary,
-            Font = new Font("Segoe UI", 8.7F),
-            AutoSize = true,
-            Location = new Point(67, 281)
+var fpsTitle = new Label
+{
+    Text = "FPS",
+    ForeColor = TextPrimary,
+    Font = new Font("Segoe UI Semibold", 9F),
+    AutoSize = true,
+    Location = new Point(24, 330)
+};
+graphicsCard.Controls.Add(fpsTitle);
+
+var fpsInfo = new Label
+{
+    Text = "Controlled by the game, VSync and refresh rate",
+    ForeColor = TextSecondary,
+    Font = new Font("Segoe UI", 8.7F),
+    AutoSize = true,
+    Location = new Point(67, 331)
         };
         graphicsCard.Controls.Add(fpsInfo);
 
         advancedButton.Text = "ADVANCED SETTINGS";
-        advancedButton.Location = new Point(40, 497);
-        advancedButton.Size = new Size(235, 40);
+        advancedButton.Location = new Point(40, 525);
+        advancedButton.Size = new Size(205, 40);
         advancedButton.FillColor = SurfaceAlt;
         advancedButton.HoverColor = Color.FromArgb(34, 41, 50);
         advancedButton.BorderColor = Border;
@@ -217,13 +225,13 @@ public class LauncherForm : Form
         advancedChevron.ForeColor = TextSecondary;
         advancedChevron.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
         advancedChevron.AutoSize = true;
-        advancedChevron.Location = new Point(249, 505);
+        advancedChevron.Location = new Point(219, 533);
         advancedChevron.BackColor = Color.Transparent;
         advancedChevron.Cursor = Cursors.Hand;
         Controls.Add(advancedChevron);
 
         compatibilityButton.Text = "COMPATIBILITY";
-        compatibilityButton.Location = new Point(290, 497);
+        compatibilityButton.Location = new Point(255, 525);
         compatibilityButton.Size = new Size(205, 40);
         compatibilityButton.FillColor = SurfaceAlt;
         compatibilityButton.HoverColor = Color.FromArgb(34, 41, 50);
@@ -242,7 +250,7 @@ public class LauncherForm : Form
         var logsButton = new ModernButton
         {
             Text = "OPEN LOGS",
-            Location = new Point(40, 576),
+            Location = new Point(40, 590),
             Size = new Size(150, 42),
             FillColor = SurfaceAlt,
             HoverColor = Color.FromArgb(34, 41, 50),
@@ -257,7 +265,7 @@ public class LauncherForm : Form
         var folderButton = new ModernButton
         {
             Text = "OPEN FOLDER",
-            Location = new Point(750, 576),
+            Location = new Point(750, 590),
             Size = new Size(150, 42),
             FillColor = SurfaceAlt,
             HoverColor = Color.FromArgb(34, 41, 50),
@@ -272,8 +280,8 @@ public class LauncherForm : Form
         var playButton = new ModernButton
         {
             Text = "PLAY",
-            Location = new Point(305, 558),
-            Size = new Size(330, 76),
+            Location = new Point(280, 575),
+            Size = new Size(380, 72),
             FillColor = Accent,
             HoverColor = AccentHover,
             BorderColor = Accent,
@@ -290,7 +298,7 @@ public class LauncherForm : Form
             ForeColor = Color.FromArgb(92, 102, 116),
             Font = new Font("Segoe UI", 8.5F),
             AutoSize = true,
-            Location = new Point(40, 653)
+            Location = new Point(40, 674)
         };
         Controls.Add(footer);
 
@@ -308,7 +316,7 @@ public class LauncherForm : Form
         {
             Text = "PORTED BY: SAMUELITODAVILA", AutoSize = true,
             ForeColor = Accent, Font = new Font("Segoe UI", 8.5F),
-            Location = new Point(905, 653), Tag = "credit"
+            Location = new Point(730, 674), Tag = "credit"
         };
         Controls.Add(credit);
 
@@ -318,7 +326,7 @@ public class LauncherForm : Form
 
     private void ConfigureAdvancedPanel()
     {
-        advancedPanel.Location = new Point(40, 548);
+        advancedPanel.Location = new Point(40, 575);
         advancedPanel.Size = new Size(860, 126);
         advancedPanel.FillColor = Surface;
         advancedPanel.BorderColor = Border;
@@ -370,7 +378,7 @@ public class LauncherForm : Form
 
     private void ConfigureCompatibilityPanel()
     {
-        compatibilityPanel.Location = new Point(40, 548);
+        compatibilityPanel.Location = new Point(40, 575);
         compatibilityPanel.Size = new Size(860, 182);
         compatibilityPanel.FillColor = Surface;
         compatibilityPanel.BorderColor = Border;
@@ -384,10 +392,6 @@ public class LauncherForm : Form
             22,
             15
         );
-
-        AddFieldLabel(compatibilityPanel, "Readback Resolve", 22, 70);
-        ConfigureCombo(readbackResolveBox, 22, 94, 205);
-        compatibilityPanel.Controls.Add(readbackResolveBox);
 
         ConfigureCheck(readbackMemexportBox, "Memory Export", 260, 72);
         ConfigureCheck(readbackMemexportFastBox, "Fast MemExport", 430, 72);
@@ -405,7 +409,7 @@ public class LauncherForm : Form
 
         var hint = new Label
         {
-            Text = "Try None, Some, Fast, then Full. Full is the most accurate option, but may significantly reduce performance.",
+            Text = "Readback Resolve is fixed to Full for FIFA Street compatibility.",
             ForeColor = TextSecondary,
             Font = new Font("Segoe UI", 8.5F),
             AutoSize = true,
@@ -426,10 +430,36 @@ public class LauncherForm : Form
             UpdateSummary();
         };
 
+        graphicsApiBox.SelectedIndexChanged += (_, _) =>
+        {
+            UpdateGraphicsApiState();
+            UpdateSummary();
+        };
+
         resolutionBox.SelectedIndexChanged += (_, _) => UpdateSummary();
-        refreshBox.SelectedIndexChanged += (_, _) => UpdateSummary();
-        gpuBox.SelectedIndexChanged += (_, _) => UpdateSummary();
-        displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+internalResolutionBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+refreshBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+gpuBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+
+gpuBox.DropDown += (_, _) =>
+{
+    int width = gpuBox.Width;
+
+    using Graphics graphics = gpuBox.CreateGraphics();
+
+    foreach (var item in gpuBox.Items)
+    {
+        int itemWidth = (int)Math.Ceiling(
+            graphics.MeasureString(
+                item?.ToString() ?? string.Empty,
+                gpuBox.Font).Width);
+
+        width = Math.Max(width, itemWidth + 40);
+    }
+
+    gpuBox.DropDownWidth = Math.Min(width, 500);
+};
+displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
     }
 
     private void ToggleAdvanced()
@@ -446,14 +476,14 @@ public class LauncherForm : Form
 
         if (advancedVisible)
         {
-            ClientSize = new Size(1250, 805);
-            advancedPanel.Location = new Point(350, 548);
-            MoveBottomControls(691, 673, 788);
+            ClientSize = new Size(1250, 846);
+            advancedPanel.Location = new Point(350, 575);
+            MoveBottomControls(721, 703, 808);
         }
         else
         {
-            ClientSize = new Size(1250, 690);
-            MoveBottomControls(576, 558, 653);
+            ClientSize = new Size(1250, 720);
+            MoveBottomControls(590, 575, 674);
         }
     }
 
@@ -471,14 +501,14 @@ public class LauncherForm : Form
 
         if (compatibilityVisible)
         {
-            ClientSize = new Size(1250, 865);
-            compatibilityPanel.Location = new Point(350, 548);
-            MoveBottomControls(748, 730, 848);
+            ClientSize = new Size(1250, 902);
+            compatibilityPanel.Location = new Point(350, 575);
+            MoveBottomControls(777, 759, 864);
         }
         else
         {
-            ClientSize = new Size(1250, 690);
-            MoveBottomControls(576, 558, 653);
+            ClientSize = new Size(1250, 720);
+            MoveBottomControls(590, 575, 674);
         }
     }
 
@@ -607,6 +637,13 @@ public class LauncherForm : Form
         });
         displayModeBox.SelectedIndex = 0;
 
+        graphicsApiBox.Items.AddRange(new object[]
+        {
+            "Direct3D 12",
+            "Vulkan"
+        });
+        graphicsApiBox.SelectedIndex = 0;
+
         monitorBox.Items.Clear();
         foreach (var screen in Screen.AllScreens)
         {
@@ -623,29 +660,30 @@ public class LauncherForm : Form
         DetectGpus();
 
         postEffectBox.Items.AddRange(new object[]
-        {
-            "None",
-            "FXAA",
-            "FXAA Extreme"
-        });
-        postEffectBox.SelectedIndex = 0;
+{
+    "None",
+    "FXAA",
+    "FXAA Extreme"
+});
+       postEffectBox.SelectedIndex = 0;
 
-        readbackResolveBox.Items.AddRange(new object[]
-        {
-            "None",
-            "Some",
-            "Fast",
-            "Full"
-        });
-        readbackResolveBox.SelectedIndex = 3; // Full: validated FIFA Street configuration
+       internalResolutionBox.Items.AddRange(new object[]
+{
+       "1x - Native (1280 x 720)",
+       "2x - 2560 x 1440",
+       "3x - 3840 x 2160",
+       "4x - 5120 x 2880"
+});
+       internalResolutionBox.SelectedIndex = 0;
+
 
         readbackMemexportBox.Checked = true;
         readbackMemexportFastBox.Checked = true;
         clearMemoryPageStateBox.Checked = false;
         occlusionQueryBox.Checked = true;
-        asyncShadersBox.Checked = true;
+        asyncShadersBox.Checked = false;
 
-        vsyncBox.Checked = true;
+        vsyncBox.Checked = false;
         vrrBox.Checked = false;
         msaaBox.Checked = false;
     }
@@ -781,6 +819,14 @@ public class LauncherForm : Form
             modeNum++;
         }
 
+        // Always expose common output resolutions up to 4K,
+        // even when the current monitor does not advertise them.
+        resolutions.Add("1280x720");
+        resolutions.Add("1920x1080");
+        resolutions.Add("2560x1440");
+        resolutions.Add("3200x1800");
+        resolutions.Add("3840x2160");
+
         foreach (string resolution in resolutions
                      .OrderBy(x =>
                      {
@@ -804,6 +850,7 @@ public class LauncherForm : Form
                 "1600x900",
                 "1920x1080",
                 "2560x1440",
+                "3200x1800",
                 "3840x2160"
             });
         }
@@ -872,26 +919,48 @@ public class LauncherForm : Form
         };
     }
 
-    internal static int RenderScale(int width, int height) =>
-        Math.Clamp((int)Math.Ceiling(Math.Max(width / 1280.0, height / 720.0)), 1, 8);
+    private void UpdateGraphicsApiState()
+    {
+        bool isD3D12 = graphicsApiBox.SelectedIndex != 1;
 
+        // GPU adapter selection is currently specific to the D3D12 backend.
+        // Vulkan uses automatic device selection (REX_VULKAN_DEVICE=-1).
+        gpuBox.Enabled = isD3D12;
+
+        if (!isD3D12)
+        {
+            gpuBox.BackColor = Color.FromArgb(34, 38, 43);
+        }
+        else
+        {
+            gpuBox.BackColor = Color.FromArgb(24, 28, 32);
+        }
+    }
     private void UpdateSummary()
     {
-        string gpu = gpuBox.SelectedItem?.ToString() ?? "Automatic GPU";
-        if (gpu.StartsWith("Adapter ", StringComparison.Ordinal))
+        string gpu;
+
+        if (graphicsApiBox.SelectedIndex == 1)
         {
-            int colon = gpu.IndexOf(':');
-            if (colon >= 0 && colon + 1 < gpu.Length)
-                gpu = gpu[(colon + 1)..].Trim();
+            gpu = "Automatic GPU (Vulkan)";
+        }
+        else
+        {
+            gpu = gpuBox.SelectedItem?.ToString() ?? "Automatic GPU";
+
+            if (gpu.StartsWith("Adapter ", StringComparison.Ordinal))
+            {
+                int colon = gpu.IndexOf(':');
+                if (colon >= 0 && colon + 1 < gpu.Length)
+                    gpu = gpu[(colon + 1)..].Trim();
+            }
         }
 
         string resolution = resolutionBox.SelectedItem?.ToString() ?? "Resolution";
         string hz = refreshBox.SelectedItem?.ToString() ?? "--";
 
-        var dimensions = resolution.Split('x');
-        string internalSize = dimensions.Length == 2 && int.TryParse(dimensions[0], out int w) && int.TryParse(dimensions[1], out int h)
-            ? $"{Environment.NewLine}Internal render resolution: {1280 * RenderScale(w, h)}x{720 * RenderScale(w, h)}" : "";
-        hardwareLabel.Text = $"{gpu}   •   {resolution}   •   {hz} Hz{internalSize}";
+        hardwareLabel.Text =
+            $"{gpu}   •   {resolution}   •   {hz} Hz";
     }
 
     private void UpdateStatus(string text, bool ok)
@@ -930,6 +999,47 @@ public class LauncherForm : Form
                 return;
             }
 
+            // Select the validated ReXGlue graphics backend.
+            string graphicsApi = graphicsApiBox.SelectedIndex == 1
+                ? "Vulkan"
+                : "D3D12";
+
+            string backendDirectory = Path.Combine(
+                Path.GetDirectoryName(exe)!,
+                "Backends",
+                graphicsApi);
+
+            string backendRuntime = Path.Combine(
+                backendDirectory,
+                "rexruntime.dll");
+
+            string backendGpu = Path.Combine(
+                backendDirectory,
+                "rexgpu-xenos.dll");
+
+            if (!File.Exists(backendRuntime) || !File.Exists(backendGpu))
+            {
+                MessageBox.Show(
+                    $"The {graphicsApi} graphics backend is missing.\n\n" +
+                    $"Expected files in:\n{backendDirectory}",
+                    "FIFA Street Launcher",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                return;
+            }
+
+            string executableDirectory = Path.GetDirectoryName(exe)!;
+
+            File.Copy(
+                backendRuntime,
+                Path.Combine(executableDirectory, "rexruntime.dll"),
+                true);
+
+            File.Copy(
+                backendGpu,
+                Path.Combine(executableDirectory, "rexgpu-xenos.dll"),
+                true);
+
             if (string.IsNullOrWhiteSpace(resolutionBox.Text) ||
                 !resolutionBox.Text.Contains('x'))
             {
@@ -957,13 +1067,6 @@ public class LauncherForm : Form
                 _ => "none"
             };
 
-            string readbackResolve = readbackResolveBox.SelectedIndex switch
-            {
-                1 => "some",
-                2 => "fast",
-                3 => "full",
-                _ => "none"
-            };
 
             string logsDir = Path.Combine(
                 Path.GetDirectoryName(exe)!,
@@ -990,9 +1093,14 @@ public class LauncherForm : Form
             startInfo.Environment["REX_GAME_DATA_ROOT"] = gameRoot;
             startInfo.Environment["REX_VIDEO_MODE_WIDTH"] = width.ToString();
             startInfo.Environment["REX_VIDEO_MODE_HEIGHT"] = height.ToString();
-            // Display size and internal Xbox 360 rendering are configured separately.
-            startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_X"] = RenderScale(width, height).ToString();
-            startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] = RenderScale(width, height).ToString();
+            // The display size does not change the Xbox 360 render targets.
+         int internalResolutionScale = Math.Max(1, internalResolutionBox.SelectedIndex + 1);
+
+startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_X"] =
+    internalResolutionScale.ToString();
+
+startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
+    internalResolutionScale.ToString();
             startInfo.Environment["REX_WINDOW_WIDTH"] = width.ToString();
             startInfo.Environment["REX_WINDOW_HEIGHT"] = height.ToString();
             startInfo.Environment["REX_VIDEO_MODE_REFRESH_RATE"] = refresh;
@@ -1001,16 +1109,32 @@ public class LauncherForm : Form
             startInfo.Environment["REX_MONITOR"] = monitor.ToString();
             startInfo.Environment["REX_VSYNC"] =
                 vsyncBox.Checked ? "true" : "false";
-            startInfo.Environment["REX_D3D12_ALLOW_VARIABLE_REFRESH_RATE_AND_TEARING"] =
-                vrrBox.Checked ? "true" : "false";
             startInfo.Environment["REX_NATIVE_2X_MSAA"] =
                 msaaBox.Checked ? "true" : "false";
             startInfo.Environment["REX_SWAP_POST_EFFECT"] = postEffect;
-            startInfo.Environment["REX_D3D12_ADAPTER"] = adapter.ToString();
-            startInfo.Environment["REX_RENDER_TARGET_PATH_D3D12"] = renderTargetPath;
+
+            if (graphicsApi == "D3D12")
+            {
+                // Validated D3D12 configuration.
+                startInfo.Environment["REX_D3D12_ALLOW_VARIABLE_REFRESH_RATE_AND_TEARING"] =
+                    vrrBox.Checked ? "true" : "false";
+                startInfo.Environment["REX_D3D12_ADAPTER"] = adapter.ToString();
+
+                // Do not force ROV/RTV. The validated D3D12 build uses
+                // ReXGlue's automatic render target path selection.
+                startInfo.Environment["REX_RENDER_TARGET_PATH_D3D12"] = "";
+            }
+            else
+            {
+                // Validated Vulkan configuration.
+                // Vulkan device stays automatic; DXGI adapter indices are
+                // not interchangeable with Vulkan device indices.
+                startInfo.Environment["REX_VULKAN_DEVICE"] = "-1";
+                startInfo.Environment["REX_RENDER_TARGET_PATH_VULKAN"] = "fbo";
+            }
 
             // Compatibilidade / coerência GPU.
-            startInfo.Environment["REX_READBACK_RESOLVE"] = readbackResolve;
+            startInfo.Environment["REX_READBACK_RESOLVE"] = "full";
             startInfo.Environment["REX_READBACK_MEMEXPORT"] =
                 readbackMemexportBox.Checked ? "true" : "false";
             startInfo.Environment["REX_READBACK_MEMEXPORT_FAST"] =
@@ -1042,7 +1166,7 @@ public class LauncherForm : Form
             File.WriteAllText(
                 launcherDebug,
                 $"Resolution={width}x{height}{Environment.NewLine}" +
-                $"InternalResolution={1280 * RenderScale(width, height)}x{720 * RenderScale(width, height)}{Environment.NewLine}" +
+                $"InternalResolution={1280 * internalResolutionScale}x{720 * internalResolutionScale} ({internalResolutionScale}x){Environment.NewLine}" +
                 $"RefreshRate={refresh}{Environment.NewLine}" +
                 $"Fullscreen={fullscreen}{Environment.NewLine}" +
                 $"Monitor={monitor}{Environment.NewLine}" +
@@ -1051,8 +1175,7 @@ public class LauncherForm : Form
                 $"MSAA={msaaBox.Checked}{Environment.NewLine}" +
                 $"PostEffect={postEffect}{Environment.NewLine}" +
                 $"Adapter={adapter}{Environment.NewLine}" +
-                $"RenderTargetPath={renderTargetPath}{Environment.NewLine}" +
-                $"ReadbackResolve={readbackResolve}{Environment.NewLine}" +
+                $"ReadbackResolve=full (fixed){Environment.NewLine}" +
                 $"ReadbackMemexport={readbackMemexportBox.Checked}{Environment.NewLine}" +
                 $"ReadbackMemexportFast={readbackMemexportFastBox.Checked}{Environment.NewLine}" +
                 $"ClearMemoryPageState={clearMemoryPageStateBox.Checked}{Environment.NewLine}" +
@@ -1167,11 +1290,11 @@ public class LauncherForm : Form
                 RefreshRate = refreshBox.Text,
                 Fullscreen = displayModeBox.SelectedIndex == 0,
                 Monitor = monitorBox.SelectedIndex,
+                GraphicsApi = graphicsApiBox.SelectedIndex,
                 Gpu = gpuBox.SelectedIndex,
                 GpuUsesDxgi = true,
-                RenderTargetPath = renderTargetPath,
                 PostEffect = postEffectBox.SelectedIndex,
-                ReadbackResolve = readbackResolveBox.SelectedIndex,
+                InternalResolutionScale = internalResolutionBox.SelectedIndex,
                 ReadbackMemexport = readbackMemexportBox.Checked,
                 ReadbackMemexportFast = readbackMemexportFastBox.Checked,
                 ClearMemoryPageState = clearMemoryPageStateBox.Checked,
@@ -1212,10 +1335,12 @@ public class LauncherForm : Form
             if (settings == null)
                 return;
 
-            if (settings.RenderTargetPath is "rov" or "rtv")
-                renderTargetPath = settings.RenderTargetPath;
-
             exePathBox.Text = settings.ExePath ?? exePathBox.Text;
+            const string oldDefaultExe = @"C:\Users\Samuel M\Desktop\FIFASTREET - 2012\Jogo\FifaStreetRex\out\build\win-amd64-debug\fifastreet.exe";
+            string releaseExe = oldDefaultExe.Replace("win-amd64-debug", "win-amd64-release");
+            if (string.Equals(exePathBox.Text, oldDefaultExe, StringComparison.OrdinalIgnoreCase)
+                && File.Exists(releaseExe))
+                exePathBox.Text = releaseExe;
             gamePathBox.Text = settings.GamePath ?? gamePathBox.Text;
 
             displayModeBox.SelectedIndex =
@@ -1232,6 +1357,12 @@ public class LauncherForm : Form
             SelectItem(resolutionBox, settings.Resolution);
             SelectItem(refreshBox, settings.RefreshRate);
 
+            if (settings.GraphicsApi >= 0 &&
+                settings.GraphicsApi < graphicsApiBox.Items.Count)
+            {
+                graphicsApiBox.SelectedIndex = settings.GraphicsApi;
+            }
+
             if (settings.GpuUsesDxgi && settings.Gpu >= 0 &&
                 settings.Gpu < gpuBox.Items.Count)
             {
@@ -1243,12 +1374,11 @@ public class LauncherForm : Form
             {
                 postEffectBox.SelectedIndex = settings.PostEffect;
             }
-
-            if (settings.ReadbackResolve >= 0 &&
-                settings.ReadbackResolve < readbackResolveBox.Items.Count)
-            {
-                readbackResolveBox.SelectedIndex = settings.ReadbackResolve;
-            }
+if (settings.InternalResolutionScale >= 0 &&
+    settings.InternalResolutionScale < internalResolutionBox.Items.Count)
+{
+    internalResolutionBox.SelectedIndex = settings.InternalResolutionScale;
+}
 
             readbackMemexportBox.Checked = settings.ReadbackMemexport;
             readbackMemexportFastBox.Checked = settings.ReadbackMemexportFast;
@@ -1278,13 +1408,35 @@ public class LauncherForm : Form
 
     private sealed class MessiPicture : PictureBox
     {
+        private const float CropX = 100f / 1280f;
+        private const float CropY = 225f / 1819f;
+        private const float CropWidth = 640f / 1280f;
+
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (Image == null) return;
+            if (Image == null || ClientSize.Width <= 0 || ClientSize.Height <= 0)
+                return;
+
+            e.Graphics.Clear(Color.FromArgb(10, 12, 16));
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            var crop = new RectangleF(Image.Width * 100f / 1280f, Image.Height * 225f / 1819f,
-                Image.Width * 640f / 1280f, Image.Height * 1260f / 1819f);
-            e.Graphics.DrawImage(Image, ClientRectangle, crop, GraphicsUnit.Pixel);
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            float sourceX = Image.Width * CropX;
+            float sourceY = Image.Height * CropY;
+            float sourceWidth = Image.Width * CropWidth;
+
+            // Preserve the same horizontal framing. Expanding the launcher
+            // reveals more of the source image vertically without stretching.
+            float scale = ClientSize.Width / sourceWidth;
+            float sourceHeight = ClientSize.Height / scale;
+            float availableHeight = Image.Height - sourceY;
+            sourceHeight = Math.Min(sourceHeight, availableHeight);
+
+            var sourceRect = new RectangleF(sourceX, sourceY, sourceWidth, sourceHeight);
+            float destinationHeight = sourceHeight * scale;
+            var destinationRect = new RectangleF(0, 0, ClientSize.Width, destinationHeight);
+
+            e.Graphics.DrawImage(Image, destinationRect, sourceRect, GraphicsUnit.Pixel);
         }
     }
 }
@@ -1297,11 +1449,11 @@ public class LauncherSettings
     public string? RefreshRate { get; set; }
     public bool Fullscreen { get; set; } = true;
     public int Monitor { get; set; }
+    public int GraphicsApi { get; set; } = 0;
     public int Gpu { get; set; }
     public bool GpuUsesDxgi { get; set; }
-    public string RenderTargetPath { get; set; } = "rov";
     public int PostEffect { get; set; }
-    public int ReadbackResolve { get; set; } = 1;
+    public int InternalResolutionScale { get; set; } = 0;
     public bool ReadbackMemexport { get; set; } = true;
     public bool ReadbackMemexportFast { get; set; } = true;
     public bool ClearMemoryPageState { get; set; } = false;

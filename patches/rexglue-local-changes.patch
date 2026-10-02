@@ -1903,11 +1903,123 @@ index 1fda053..c5d6777 100644
  
    // Allocate from the heap. Not sure why XAM does this specially, perhaps
    // it keeps stuff in a separate heap?
+diff --git a/src/kernel/xboxkrnl/xboxkrnl_modules.cpp b/src/kernel/xboxkrnl/xboxkrnl_modules.cpp
+index dcd2001..97dd0ed 100644
+--- a/src/kernel/xboxkrnl/xboxkrnl_modules.cpp
++++ b/src/kernel/xboxkrnl/xboxkrnl_modules.cpp
+@@ -85,6 +85,13 @@ u32 XexGetModuleSection_entry(mapped_void hmodule, mapped_string name, mapped_u3
+ 
+ u32 XexLoadImage_entry(mapped_string module_name, u32 module_flags, u32 min_version,
+                        mapped_u32 hmodule_ptr) {
++
++  REXKRNL_ERROR(
++      "FIFA TRACE XexLoadImage: module='{}' flags=0x{:08X} min_version=0x{:08X}",
++      module_name.value(),
++      module_flags,
++      min_version);
++
+   X_STATUS result = X_STATUS_NO_SUCH_FILE;
+ 
+   uint32_t hmodule = 0;
+@@ -118,7 +125,13 @@ u32 XexLoadImage_entry(mapped_string module_name, u32 module_flags, u32 min_vers
+ 
+   *hmodule_ptr = hmodule;
+ 
+-  return result;
++REXKRNL_ERROR(
++    "FIFA TRACE XexLoadImage RESULT: module='{}' result=0x{:08X} hmodule=0x{:08X}",
++    module_name.value(),
++    static_cast<uint32_t>(result),
++    hmodule);
++
++return result;
+ }
+ 
+ u32 XexUnloadImage_entry(mapped_void hmodule) {
+@@ -170,6 +183,13 @@ u32 XexGetProcedureAddress_entry(mapped_void hmodule, u32 ordinal, mapped_u32 ou
+     module = XModule::GetFromHModule(REX_KERNEL_STATE(), hmodule);
+   }
+   if (module) {
++    REXKRNL_ERROR(
++        "FIFA TRACE XexGetProcedureAddress: module='{}' hmodule=0x{:08X} "
++        "ordinal=0x{:08X} caller=0x{:08X}",
++        module->name(),
++        static_cast<uint32_t>(hmodule),
++        ordinal,
++        caller_address);
+     uint32_t ptr;
+     if (is_string_name) {
+       ptr = module->GetProcAddressByName(string_name);
+@@ -177,6 +197,13 @@ u32 XexGetProcedureAddress_entry(mapped_void hmodule, u32 ordinal, mapped_u32 ou
+       ptr = module->GetProcAddressByOrdinal(ordinal, caller_address);
+     }
+     if (ptr) {
++    REXKRNL_ERROR(
++        "FIFA TRACE XexGetProcedureAddress RESULT: module='{}' "
++        "ordinal=0x{:08X} -> ptr=0x{:08X} caller=0x{:08X}",
++        module->name(),
++        ordinal,
++        ptr,
++        caller_address);
+       *out_function_ptr = ptr;
+       result = X_STATUS_SUCCESS;
+     } else {
 diff --git a/src/system/function_dispatcher.cpp b/src/system/function_dispatcher.cpp
-index bd43109..ffa5eeb 100644
+index bd43109..3e903e8 100644
 --- a/src/system/function_dispatcher.cpp
 +++ b/src/system/function_dispatcher.cpp
-@@ -179,8 +179,10 @@ uint64_t FunctionDispatcher::ExecuteInterrupt(ThreadState* thread_state, uint32_
+@@ -35,6 +35,18 @@ FunctionDispatcher* GetBoundFunctionDispatcher() {
+ }  // namespace
+ 
+ static void InvalidFunctionTrap(PPCContext& ctx, uint8_t* /*base*/) {
++  REXCPU_ERROR(
++      "INVALID INDIRECT CALL: target={:08X} LR={:08X} CTR={:08X} "
++      "r1={:08X} r2={:08X} r3={:08X} r11={:08X} r12={:08X}",
++      ctx.last_indirect_target,
++      static_cast<uint32_t>(ctx.lr),
++      static_cast<uint32_t>(ctx.ctr.u64),
++      static_cast<uint32_t>(ctx.r1.u64),
++      static_cast<uint32_t>(ctx.r2.u64),
++      static_cast<uint32_t>(ctx.r3.u64),
++      static_cast<uint32_t>(ctx.r11.u64),
++      static_cast<uint32_t>(ctx.r12.u64));
++
+   REX_FATAL("Call to invalid or unregistered function at guest address 0x{:08X}",
+             ctx.last_indirect_target);
+ }
+@@ -61,11 +73,26 @@ bool FunctionDispatcher::Execute(ThreadState* thread_state, uint32_t address) {
+   SCOPE_profile_cpu_f("cpu");
+   PROFILE_FUNCTION_DISPATCHED();
+ 
+-  PPCFunc* fn = GetFunction(address);
+-  if (!fn) {
+-    REXCPU_ERROR("Execute({:08X}): function not in function table", address);
+-    return false;
+-  }
++ PPCFunc* fn = GetFunction(address);
++if (!fn) {
++  auto* ctx = thread_state->context();
++
++  REXCPU_ERROR(
++      "EXECUTE MISS: address={:08X} last_indirect_target={:08X} "
++      "LR={:08X} CTR={:08X} r1={:08X} r2={:08X} "
++      "r3={:08X} r11={:08X} r12={:08X}",
++      address,
++      ctx->last_indirect_target,
++      static_cast<uint32_t>(ctx->lr),
++      static_cast<uint32_t>(ctx->ctr.u64),
++      static_cast<uint32_t>(ctx->r1.u64),
++      static_cast<uint32_t>(ctx->r2.u64),
++      static_cast<uint32_t>(ctx->r3.u64),
++      static_cast<uint32_t>(ctx->r11.u64),
++      static_cast<uint32_t>(ctx->r12.u64));
++
++  return false;
++}
+ 
+   auto* ctx = thread_state->context();
+   auto* previous_thread_state = ThreadState::Get();
+@@ -179,8 +206,10 @@ uint64_t FunctionDispatcher::ExecuteInterrupt(ThreadState* thread_state, uint32_
  
  // rexglue function table management
  
@@ -1920,7 +2032,7 @@ index bd43109..ffa5eeb 100644
                                                   bool is_entrypoint) {
    std::lock_guard<std::recursive_mutex> lock(dispatch_mutex_);
  
-@@ -190,25 +192,39 @@ bool FunctionDispatcher::InitializeFunctionTable(uint32_t code_base, uint32_t co
+@@ -190,25 +219,39 @@ bool FunctionDispatcher::InitializeFunctionTable(uint32_t code_base, uint32_t co
      return false;
    }
  
@@ -1972,7 +2084,7 @@ index bd43109..ffa5eeb 100644
      REXLOG_ERROR("Failed to initialize guest memory function table");
      return false;
    }
-@@ -226,11 +242,13 @@ bool FunctionDispatcher::InitializeFunctionTable(uint32_t code_base, uint32_t co
+@@ -226,11 +269,13 @@ bool FunctionDispatcher::InitializeFunctionTable(uint32_t code_base, uint32_t co
      entrypoint_code_base_ = code_base;
    }
  

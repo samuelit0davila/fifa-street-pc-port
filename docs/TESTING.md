@@ -7,11 +7,55 @@ The recorded results are in [STATUS.md](STATUS.md). These steps describe checks 
 1. Use a personal supported Xbox 360 ISO and a new, empty installation folder.
 2. Record installer version, start/end times, Windows version, CPU, GPU/driver, free space and ISO region/revision.
 3. Confirm extraction, menu-credit patching and compilation finish successfully.
-4. Confirm `Game/fifastreet.exe` and `Game/fifastreet_fifadllzf_xex.dll` exist, with runtime libraries.
-5. Test the optional desktop shortcut and **OPEN LAUNCHER**.
-6. Repeat separately on a clean Windows machine to test missing C++ prerequisites.
+4. Confirm the following files exist:
+   - `Game/fifastreet.exe`
+   - `Game/fifastreet_fifadllzf_xex.dll`
+   - `Game/fifastreet_FootballCompEngzf_xex.dll`
+5. Confirm `Game/Backends/D3D12` and `Game/Backends/Vulkan` each contain `rexruntime.dll` and `rexgpu-xenos.dll`.
+6. Confirm the initial root runtime/GPU pair corresponds to Direct3D 12.
+7. Test the optional desktop shortcut and **OPEN LAUNCHER**.
+8. Repeat separately on a clean Windows machine to test missing C++ prerequisites.
 
 For cancellation, use a disposable new destination, cancel during extraction/build, and confirm the active child process stops. Partial installation files can remain. Do not reuse that destination as a completed game.
+
+## Backend switching
+
+Test both graphics APIs from the same clean installation.
+
+### Direct3D 12
+
+1. Select **Direct3D 12**.
+2. Confirm GPU-adapter selection is enabled.
+3. Press **PLAY**.
+4. Confirm the game starts and renders correctly.
+5. Record the active root runtime/GPU hashes if validating a release package.
+
+### Vulkan
+
+1. Select **Vulkan**.
+2. Confirm the launcher uses automatic Vulkan device selection.
+3. Press **PLAY**.
+4. Confirm the game starts and renders correctly.
+5. Confirm the active root runtime/GPU pair has changed to the packaged Vulkan pair.
+
+Switch back to Direct3D 12 and repeat when validating backend switching in both directions.
+
+## Resolution testing
+
+Output resolution and internal rendering resolution must be tested separately.
+
+The launcher exposes internal scales:
+
+- 1x — 1280x720
+- 2x — 2560x1440
+- 3x — 3840x2160
+- 4x — 5120x2880
+
+Test output modes supported by the display, including 1280x720, 1920x1080, 2560x1440, 3200x1800 and 3840x2160 where applicable.
+
+Changing output resolution must not implicitly change the selected internal scale.
+
+Record both values in performance reports.
 
 ## Credits and content checks
 
@@ -26,14 +70,27 @@ Audit the distributable bundle separately for game ISOs, original XEX files, BIG
 ## Launcher and game
 
 1. Confirm the start screen and main menu display **PORTED BY: SAMUELITODAVILA**.
-2. Choose 1280×720, 1920×1080, 2560×1440 and 3840×2160 where the display supports them. Record the internal size shown by the launcher and the runtime's actual render-scale behavior.
-3. Test both fullscreen and windowed mode. Minimize/restore repeatedly from the menu and during play; the game should repaint and remain responsive.
-4. Play a complete match. Check controls, sound, transitions and results.
-5. Save, close the game, relaunch and load the saved state.
-6. Test additional modes/venues and controllers individually. Record unsupported options and reproduction steps.
+2. Confirm Direct3D 12 and Vulkan can each launch the game.
+3. Confirm full resolve readback remains active.
+4. Test fullscreen and windowed mode. Minimize/restore repeatedly from the menu and during play.
+5. Play a complete match. Check controls, sound, transitions and results.
+6. Enter World Tour and exercise the progression path that previously failed.
+7. Save, close the game, relaunch and load the saved state.
+8. Test additional modes/venues and controllers individually. Record unsupported options and reproduction steps.
+
+## ReXGlue patch
+
+Before a release, verify the project patch against the recorded ReXGlue base:
+
+    git -C ReXGlue apply --check ../patches/rexglue-local-changes.patch
+    git -C ReXGlue apply ../patches/rexglue-local-changes.patch
+
+The v0.3.0 patch was checked and applied successfully against ReXGlue commit `c94f5eb`.
 
 ## Performance reporting
 
-Use a repeatable scene and settings, identify hardware/driver, report resolution and internal scale, and distinguish a cold shader cache from a warm cache. A screenshot of recent FPS is useful evidence of that moment, not a sustained benchmark.
+Use a repeatable scene and settings, identify hardware/driver and graphics API, and report output resolution and internal scale separately.
 
-The supplied gameplay capture shows **78.3 recent FPS**. No general performance guarantee is inferred from it.
+Distinguish a cold shader cache from a warm cache. A screenshot of recent FPS is useful evidence of that moment, not a sustained benchmark.
+
+Do not infer a universal performance guarantee from a single machine. In particular, availability of 3x/4x internal scaling or 4K output does not imply that those combinations maintain 60 FPS.

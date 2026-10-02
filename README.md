@@ -1,4 +1,4 @@
-<div align="center">
+﻿<div align="center">
 
 <img src="docs/images/project-icon.png" alt="FIFA Street" width="64">
 
@@ -16,7 +16,7 @@
 
 ## About
 
-I'm bringing FIFA Street (2012) to Windows PC using ReXGlue. I've built a graphical installer and a dedicated launcher with display, graphics and compatibility settings.
+I'm bringing FIFA Street (2012) to Windows PC using ReXGlue. The project includes a graphical installer and a dedicated launcher with Direct3D 12 and Vulkan support, display settings, independent internal-resolution scaling and compatibility controls.
 
 The installer uses your own Xbox 360 ISO to extract the game files, apply my menu credits and compile the game locally. I don't include an ISO, original game data or generated game binaries in this repository or installer.
 
@@ -24,7 +24,7 @@ The installer uses your own Xbox 360 ISO to extract the game files, apply my men
 
 The latest experimental release is available from the [release page](https://github.com/samuelitodavila/fifa-street-pc/releases).
 
-**You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a Vulkan-capable GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files.
+**You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a compatible Direct3D 12 or Vulkan GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files.
 
 1. Run **FifaStreetSetup.exe**.
 2. Select your ISO and a new or empty installation folder.
@@ -33,11 +33,48 @@ The latest experimental release is available from the [release page](https://git
 
 The installer includes its .NET runtime, SDK and compiler tools. Installation time varies by system.
 
+## Graphics backends
+
+v0.3.0 Experimental packages two validated ReXGlue graphics backends:
+
+- **Direct3D 12** — default backend, with GPU-adapter selection in the launcher.
+- **Vulkan** — uses automatic Vulkan device selection.
+
+The launcher switches the validated `rexruntime.dll` and `rexgpu-xenos.dll` pair automatically when the graphics API is changed.
+
+Full resolve readback is fixed to the validated configuration for both backends.
+
+## Resolution controls
+
+Output resolution and internal rendering resolution are configured independently.
+
+**Output Resolution** controls the video/window output. Common modes exposed by the launcher include:
+
+- 1280x720
+- 1920x1080
+- 2560x1440
+- 3200x1800
+- 3840x2160
+
+**Internal Resolution** controls the integer render scale relative to FIFA Street's 1280x720 base:
+
+- 1x — 1280x720
+- 2x — 2560x1440
+- 3x — 3840x2160
+- 4x — 5120x2880
+
+Higher settings are exposed for testing and do not imply a performance guarantee. Output resolution does not automatically change the internal rendering scale.
+
 ## World Tour fix
 
-The current build recompiles the additional **FootballCompEngzf** competition-engine module used by World Tour. This fixes the crash previously encountered when progressing through the Bronze/Silver/Gold World Tour flow.
+The current build recompiles the additional **FootballCompEngzf** competition-engine module used by World Tour. This fixes the crash/return-to-menu previously encountered during Bronze/Silver/Gold World Tour progression.
 
-A clean end-to-end installation from an original Xbox 360 ISO has been completed successfully with the current pipeline. The resulting installation was launched through the included launcher, and **Practice** and **World Tour** were tested successfully.
+The installer now builds the main executable plus:
+
+- `fifastreet_fifadllzf_xex.dll`
+- `fifastreet_FootballCompEngzf_xex.dll`
+
+A clean end-to-end installation from an original Xbox 360 ISO has been completed successfully with the current multi-backend pipeline. Direct3D 12, Vulkan, Practice and World Tour were tested successfully from that installation.
 
 ## Screenshots and gameplay
 
@@ -55,11 +92,15 @@ I've recorded gameplay from my PC build.
 
 ## Current status
 
-The current installer pipeline has been validated from ISO extraction through credit patching, local recompilation and first launch. It builds the main executable plus the `fifadllzf` and `FootballCompEngzf` guest modules.
+The v0.3.0 installer pipeline has been validated from ISO extraction through credit patching, local recompilation, multi-backend packaging and first launch.
 
-The package uses the validated Vulkan runtime/GPU pair and the known-good full resolve-readback configuration. More hardware, controllers, audio, saves, venues and long-session testing is still welcome; see [known issues and validation](docs/STATUS.md).
+A clean installation was tested with both Direct3D 12 and Vulkan. 2560x1440 output with 2x internal rendering was specifically exercised during backend validation. World Tour was also retested successfully on the final clean multi-backend installation.
 
-If you encounter a problem, [open an issue](https://github.com/samuelitodavila/fifa-street-pc/issues) with your hardware, Windows and driver versions, settings and relevant logs. Please don't upload ISOs or game files.
+This remains an experimental port. Performance depends on hardware, drivers, output resolution and internal scale. 3x/4x internal rendering and 4K output should not be interpreted as guaranteed 60 FPS modes.
+
+See [known issues and validation](docs/STATUS.md) for the current validation scope.
+
+If you encounter a problem, [open an issue](https://github.com/samuelitodavila/fifa-street-pc/issues) with your hardware, Windows and driver versions, selected graphics API/settings and relevant logs. Please don't upload ISOs or game files.
 
 ## Credits and licence
 
