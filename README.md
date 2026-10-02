@@ -22,16 +22,22 @@ The installer uses your own Xbox 360 ISO to extract the game files, apply my men
 
 ## Download and install
 
-My first experimental release is now available. Download **FifaStreet-Setup.exe** from the [release page](https://github.com/samuelitodavila/fifa-street-pc/releases/tag/v0.1.0-experimental).
+The latest experimental release is available from the [release page](https://github.com/samuelitodavila/fifa-street-pc/releases).
 
-**You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a Vulkan-capable GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files. An Internet connection may be needed to install Microsoft C++ build components.
+**You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a Vulkan-capable GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files.
 
-1. Run **FifaStreet-Setup.exe**.
+1. Run **FifaStreetSetup.exe**.
 2. Select your ISO and a new or empty installation folder.
 3. Click **INSTALL FIFA STREET** and wait for extraction and local compilation.
 4. Once complete, click **OPEN LAUNCHER**, choose your settings and press **PLAY**.
 
-The installer includes its .NET runtime, SDK and compiler tools. My earlier installation test took around **22 minutes**, but your installation time may vary.
+The installer includes its .NET runtime, SDK and compiler tools. Installation time varies by system.
+
+## World Tour fix
+
+The current build recompiles the additional **FootballCompEngzf** competition-engine module used by World Tour. This fixes the crash previously encountered when progressing through the Bronze/Silver/Gold World Tour flow.
+
+A clean end-to-end installation from an original Xbox 360 ISO has been completed successfully with the current pipeline. The resulting installation was launched through the included launcher, and **Practice** and **World Tour** were tested successfully.
 
 ## Screenshots and gameplay
 
@@ -41,19 +47,17 @@ The installer includes its .NET runtime, SDK and compiler tools. My earlier inst
 
 ### Gameplay video
 
-I've recorded gameplay from my PC build. Click the image below to download the full video (**MP4, approximately 1.45 GiB**).
+I've recorded gameplay from my PC build.
 
 <a href="https://github.com/samuelitodavila/fifa-street-pc/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4">
   <img src="docs/images/gameplay.png" alt="Download my FIFA Street PC gameplay video" width="1000">
 </a>
 
-[Download gameplay video](https://github.com/samuelitodavila/fifa-street-pc/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4)
-
 ## Current status
 
-I've tested an earlier complete installation and captured the start screen, menus and indoor gameplay on PC. I've also corrected Vulkan packaging, internal render scaling and window restoration.
+The current installer pipeline has been validated from ISO extraction through credit patching, local recompilation and first launch. It builds the main executable plus the `fifadllzf` and `FootballCompEngzf` guest modules.
 
-This is still experimental. I haven't completed a full installation test of the latest installer or verified every game mode, audio, controllers and saves. See [known issues and validation](docs/STATUS.md).
+The package uses the validated Vulkan runtime/GPU pair and the known-good full resolve-readback configuration. More hardware, controllers, audio, saves, venues and long-session testing is still welcome; see [known issues and validation](docs/STATUS.md).
 
 If you encounter a problem, [open an issue](https://github.com/samuelitodavila/fifa-street-pc/issues) with your hardware, Windows and driver versions, settings and relevant logs. Please don't upload ISOs or game files.
 
