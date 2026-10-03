@@ -8,7 +8,7 @@
 
 ### PORTED BY: SAMUELITODAVILA
 
-[Downloads](https://github.com/samuelitodavila/fifa-street-pc/releases) · [Report a bug](https://github.com/samuelitodavila/fifa-street-pc/issues) · [Build from source](docs/BUILDING.md)
+[Downloads](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases) · [Report a bug](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/issues) · [Build from source](docs/BUILDING.md)
 
 <img src="docs/images/start-screen.png" alt="FIFA Street running on PC" width="1000">
 
@@ -22,7 +22,7 @@ The installer uses your own Xbox 360 ISO to extract the game files, apply my men
 
 ## Download and install
 
-The latest experimental release is available from the [release page](https://github.com/samuelitodavila/fifa-street-pc/releases).
+The latest experimental release is available from the [release page](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases).
 
 **You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a compatible Direct3D 12 or Vulkan GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files.
 
@@ -86,7 +86,7 @@ A clean end-to-end installation from an original Xbox 360 ISO has been completed
 
 I've recorded gameplay from my PC build.
 
-<a href="https://github.com/samuelitodavila/fifa-street-pc/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4">
+<a href="https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4">
   <img src="docs/images/gameplay.png" alt="Download my FIFA Street PC gameplay video" width="1000">
 </a>
 
@@ -100,7 +100,7 @@ This remains an experimental port. Performance depends on hardware, drivers, out
 
 See [known issues and validation](docs/STATUS.md) for the current validation scope.
 
-If you encounter a problem, [open an issue](https://github.com/samuelitodavila/fifa-street-pc/issues) with your hardware, Windows and driver versions, selected graphics API/settings and relevant logs. Please don't upload ISOs or game files.
+If you encounter a problem, [open an issue](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/issues) with your hardware, Windows and driver versions, selected graphics API/settings and relevant logs. Please don't upload ISOs or game files.
 
 ## Credits and licence
 

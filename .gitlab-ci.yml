@@ -1,0 +1,26 @@
+stages:
+  - validate
+  - build
+
+validate-source:
+  stage: validate
+  image: mcr.microsoft.com/powershell:7.4-ubuntu-22.04
+  script:
+    - pwsh -NoProfile -File ci/validate-source.ps1
+
+build-installer:
+  stage: build
+  tags:
+    - saas-windows-medium-amd64
+  timeout: 2h
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+  allow_failure: true
+  script:
+    - pwsh -NoProfile -File ci/build-installer.ps1
+  artifacts:
+    name: FifaStreet-Setup
+    expire_in: 30 days
+    paths:
+      - dist/FifaStreet-Setup.exe.sha256

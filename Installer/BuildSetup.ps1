@@ -1,5 +1,16 @@
-param([Parameter(Mandatory = $true)][string]$Output)
+param(
+    [Parameter(Mandatory = $true)][string]$Output,
+    [string]$LLVMRoot = 'C:\Program Files\LLVM',
+    [string]$CMakeRoot = 'C:\Program Files\CMake',
+    [string]$NinjaPath = (Get-Command ninja.exe -ErrorAction Stop).Source,
+    [string]$ClangResourceVersion
+)
 $ErrorActionPreference = 'Stop'
+if (-not $ClangResourceVersion) {
+    $ClangResourceVersion = (Get-ChildItem -LiteralPath (Join-Path $LLVMRoot 'lib\clang') -Directory |
+        Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1).Name
+}
+if (-not $ClangResourceVersion) { throw 'Clang resource directory was not found.' }
 $root = $PSScriptRoot
 $projectRoot = Split-Path $root -Parent
 $stage = Join-Path $env:TEMP ('FifaStreetPackage_' + [guid]::NewGuid().ToString('N'))
@@ -17,7 +28,6 @@ New-Item -ItemType Directory -Path (Join-Path $stage 'tools') | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'tools\extract-xiso.exe') -Destination (Join-Path $stage 'tools')
 New-Item -ItemType Directory -Path (Join-Path $stage 'payload\Game') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'payload\Game\fifastreet.toml') -Destination (Join-Path $stage 'payload\Game')
-Copy-Item -LiteralPath (Join-Path $projectRoot 'Jogo\cover') -Destination (Join-Path $projectRoot 'Launcher\FifaStreetLauncher\cover.jpg') -Force
 dotnet publish (Join-Path $projectRoot 'Launcher\FifaStreetLauncher\FifaStreetLauncher.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o (Join-Path $stage 'payload')
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar o launcher.' }
 Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter '*.pdb' | Remove-Item
@@ -89,16 +99,16 @@ foreach ($name in @('rexruntime.lib','rexgpu-xenos.lib')) {
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\include\rex') -Destination (Join-Path $stage 'sdk\include') -Recurse -Force
 Get-ChildItem -LiteralPath (Join-Path $stage 'sdk\bin') -Filter 'rexglue.before*' | Remove-Item
 New-Item -ItemType Directory -Path (Join-Path $stage 'compiler\bin') -Force | Out-Null
-foreach ($name in @('clang.exe','clang++.exe','lld-link.exe','llvm-rc.exe','llvm-mt.exe')) { Copy-Item -LiteralPath "C:\Program Files\LLVM\bin\$name" -Destination (Join-Path $stage 'compiler\bin') }
+foreach ($name in @('clang.exe','clang++.exe','lld-link.exe','llvm-rc.exe','llvm-mt.exe')) { Copy-Item -LiteralPath (Join-Path $LLVMRoot "bin\$name") -Destination (Join-Path $stage 'compiler\bin') }
 New-Item -ItemType Directory -Path (Join-Path $stage 'compiler\lib\clang') -Force | Out-Null
-Copy-Item -LiteralPath 'C:\Program Files\LLVM\lib\clang\23' -Destination (Join-Path $stage 'compiler\lib\clang') -Recurse
-foreach ($name in @('cmake.exe','cmcldeps.exe')) { Copy-Item -LiteralPath "C:\Program Files\CMake\bin\$name" -Destination (Join-Path $stage 'compiler\bin') }
-Copy-Item -LiteralPath 'C:\Program Files\CMake\share' -Destination (Join-Path $stage 'compiler\share') -Recurse
-Copy-Item -LiteralPath 'C:\Users\Samuel M\miniconda3\Library\bin\ninja.exe' -Destination (Join-Path $stage 'compiler\bin')
+Copy-Item -LiteralPath (Join-Path $LLVMRoot "lib\clang\$ClangResourceVersion") -Destination (Join-Path $stage 'compiler\lib\clang') -Recurse
+foreach ($name in @('cmake.exe','cmcldeps.exe')) { Copy-Item -LiteralPath (Join-Path $CMakeRoot "bin\$name") -Destination (Join-Path $stage 'compiler\bin') }
+Copy-Item -LiteralPath (Join-Path $CMakeRoot 'share') -Destination (Join-Path $stage 'compiler\share') -Recurse
+Copy-Item -LiteralPath $NinjaPath -Destination (Join-Path $stage 'compiler\bin')
 New-Item -ItemType Directory -Path (Join-Path $stage 'licenses') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'FifaStreetSetupTool\ThirdParty\MonoGame-LICENSE.txt') -Destination (Join-Path $stage 'licenses\MonoGame-LZX-MS-PL.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\LICENSE') -Destination (Join-Path $stage 'licenses\ReXGlue.txt')
-Copy-Item -LiteralPath 'C:\Program Files\CMake\doc\cmake\LICENSE.rst' -Destination (Join-Path $stage 'licenses\CMake.rst')
+Copy-Item -LiteralPath (Join-Path $CMakeRoot 'doc\cmake\LICENSE.rst') -Destination (Join-Path $stage 'licenses\CMake.rst')
 $thirdPartyRoot = Join-Path $projectRoot 'ReXGlue\thirdparty'
 Get-ChildItem -LiteralPath $thirdPartyRoot -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE|COPYRIGHT)(\..*)?$' } | ForEach-Object {
     $relative = $_.FullName.Substring($thirdPartyRoot.Length + 1)
@@ -109,7 +119,6 @@ Get-ChildItem -LiteralPath $thirdPartyRoot -Recurse -File | Where-Object { $_.Na
 
 $forbidden = Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Name -match '\.(iso|xex|big|bh)$|\.xex\.dll$|^fifastreet\.exe$|^fifastreet_.*_xex\.dll$|^fifastreet_recomp' }
 if ($forbidden) { throw 'O pacote contem ficheiros do jogo ou codigo recompilado.' }
-Copy-Item -LiteralPath (Join-Path $projectRoot 'Jogo\cover') -Destination (Join-Path $root 'FifaStreetSetupTool\cover.jpg') -Force
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $bundle = Join-Path $root 'FifaStreetSetupTool\bundle.zip'
 if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle }
