@@ -13,6 +13,13 @@ internal static class Program
     static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        if (args.Length == 2 && args[0] == "--update-test")
+        {
+            using var log = new StreamWriter(args[1] + ".update-test.log") { AutoFlush = true };
+            Console.SetOut(log);
+            try { SetupForm.PrepareBundle(); InstallationUpdate.Apply(InstallerEngine.BundleRoot!, Path.GetFullPath(args[1])); return 0; }
+            catch (Exception error) { Console.WriteLine(error); return 100; }
+        }
         if (args.Length == 2 && args[0] == "--cancel-self-test")
         {
             using var cancellation = new System.Threading.CancellationTokenSource();
@@ -103,25 +110,39 @@ internal sealed class SetupForm : Form
         Controls.Add(artwork);
         Controls.Add(Label("FIFA STREET", 340, 27, 550, 50, 30, Accent));
         Controls.Add(Label("PC INSTALLER", 343, 80, 540, 30, 12, Color.LightGray));
-        Controls.Add(Label(Credit, 343, 118, 545, 30, 11, Accent));
-        Controls.Add(Label("Select your FIFA Street ISO and choose where to install the game.", 343, 169, 548, 28));
+        Controls.Add(Label(Credit + "\nContributions: Emran_Ahm3d", 343, 113, 545, 40, 10, Accent));
+        Controls.Add(Label(PrecompiledPackage.Enabled
+            ? "New installation: select your ISO. To update, choose your existing game folder below (the folder containing Game and GameData)."
+            : "Select your FIFA Street ISO and choose where to install the game.", 343, 158, 548, 48, 9));
         AddPath("FIFA Street ISO", iso, 209, () =>
         {
             using var dialog = new OpenFileDialog { Title = "Select FIFA Street ISO", Filter = "ISO image (*.iso)|*.iso", CheckFileExists = true };
             if (dialog.ShowDialog(this) == DialogResult.OK) iso.Text = dialog.FileName;
         });
         destination.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Games", "FIFA Street PC");
-        AddPath("Installation folder", destination, 288, () =>
+        AddPath(PrecompiledPackage.Enabled ? "Installation folder / existing game folder to update" : "Installation folder", destination, 288, () =>
         {
-            using var dialog = new FolderBrowserDialog { Description = "Choose installation folder", UseDescriptionForTitle = true, SelectedPath = destination.Text };
+            string initialFolder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            try
+            {
+                var folder = new DirectoryInfo(Path.GetFullPath(destination.Text));
+                while (folder != null && !folder.Exists) folder = folder.Parent;
+                if (folder != null) initialFolder = folder.FullName;
+            }
+            catch (Exception error) when (error is ArgumentException or IOException or NotSupportedException)
+            {
+                // A manually entered invalid path must not prevent browsing.
+            }
+            using var dialog = new FolderBrowserDialog { Description = PrecompiledPackage.Enabled ? "Choose a new installation folder, or your existing game folder to update (containing Game and GameData)." : "Choose installation folder", UseDescriptionForTitle = true, InitialDirectory = initialFolder };
             if (dialog.ShowDialog(this) == DialogResult.OK) destination.Text = dialog.SelectedPath;
         });
+        destination.TextChanged += (_, _) => RefreshInstallMode();
         status.SetBounds(343, 373, 550, 43);
-        status.Text = "Game files will be created on your PC from your ISO.";
+        status.Text = PrecompiledPackage.Enabled ? "Your ISO supplies the game data. Ready-to-play binaries are included." : "Game files will be created on your PC from your ISO.";
         Controls.Add(status);
         progress.SetBounds(343, 423, 548, 10);
         Controls.Add(progress);
-        var note = Label("An Internet connection may be needed to set up Windows components.", 343, 448, 548, 35, 9, Color.Silver);
+        var note = Label(PrecompiledPackage.Enabled ? "No compiler, Visual Studio or Internet connection required." : "An Internet connection may be needed to set up Windows components.", 343, 448, 548, 35, 9, Color.Silver);
         Controls.Add(note);
         install.SetBounds(343, 500, 548, 46);
         install.Text = "INSTALL FIFA STREET";
@@ -178,6 +199,17 @@ internal sealed class SetupForm : Form
             CancelInstallation();
         };
         FormClosed += (_, _) => { timer.Dispose(); artwork.Image?.Dispose(); };
+        RefreshInstallMode();
+    }
+
+    void RefreshInstallMode()
+    {
+        if (busy || completed || !PrecompiledPackage.Enabled) return;
+        bool updating = InstallationUpdate.IsInstallation(destination.Text);
+        install.Text = updating ? "UPDATE FIFA STREET" : "INSTALL FIFA STREET";
+        iso.Enabled = !updating;
+        inputs[1].Enabled = !updating;
+        status.Text = updating ? "Existing installation found. Click UPDATE FIFA STREET. No ISO required; saves and preferences are preserved." : "Select your ISO for a new installation, or choose your existing game folder to update.";
     }
 
     static Label Label(string text, int x, int y, int width, int height, float size = 10, Color? color = null) =>
@@ -203,11 +235,16 @@ internal sealed class SetupForm : Form
     {
         if (completed)
         {
-            Process.Start(new ProcessStartInfo(Path.Combine(installedPath, "FifaStreetLauncher.exe")) { UseShellExecute = true, WorkingDirectory = installedPath });
-            Close();
+            try
+            {
+                Process.Start(new ProcessStartInfo(Path.Combine(installedPath, "FifaStreetLauncher.exe")) { UseShellExecute = true, WorkingDirectory = installedPath });
+                Close();
+            }
+            catch (Exception error) { MessageBox.Show(this, "The launcher could not be opened.\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error); }
             return;
         }
-        if (!File.Exists(iso.Text) || !iso.Text.EndsWith(".iso", StringComparison.OrdinalIgnoreCase))
+        bool updating = PrecompiledPackage.Enabled && InstallationUpdate.IsInstallation(destination.Text);
+        if (!updating && (!File.Exists(iso.Text) || !iso.Text.EndsWith(".iso", StringComparison.OrdinalIgnoreCase)))
         {
             MessageBox.Show(this, "Select a valid FIFA Street ISO image.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
@@ -217,11 +254,12 @@ internal sealed class SetupForm : Form
         {
             target = Path.GetFullPath(destination.Text);
             if (target == Path.GetPathRoot(target)) throw new IOException("Choose a game folder instead of the root of a drive.");
-            if (Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
+            if (!updating && Directory.Exists(target) && Directory.EnumerateFileSystemEntries(target).Any())
                 throw new IOException("The selected folder contains files. Choose a new or empty folder to install the game.");
             Directory.CreateDirectory(target);
-            if (new DriveInfo(Path.GetPathRoot(target)!).AvailableFreeSpace < 12L * 1024 * 1024 * 1024)
-                throw new IOException("At least 12 GB of free space is required on the destination drive.");
+            long requiredSpace = (updating ? 2L : 12L) * 1024 * 1024 * 1024;
+            if (new DriveInfo(Path.GetPathRoot(target)!).AvailableFreeSpace < requiredSpace)
+                throw new IOException(updating ? "At least 2 GB of free space is required for the update and backup." : "At least 12 GB of free space is required on the destination drive.");
         }
         catch (Exception error) { MessageBox.Show(this, error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
         busy = true;
@@ -234,65 +272,88 @@ internal sealed class SetupForm : Form
         progress.Style = ProgressBarStyle.Marquee;
         status.Text = "Preparing installation…";
         string selectedIso = iso.Text;
-        string logPath = Path.Combine(target, "installation.log");
-        using var log = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true };
+        string logPath = Path.Combine(target, updating ? "update.log" : "installation.log");
+        StreamWriter? log = null;
         var previousWriter = Console.Out;
-        Console.SetOut(new ProgressWriter(log, messages));
         int result;
         try
         {
+            log = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true };
+            Console.SetOut(new ProgressWriter(log, messages));
             result = await Task.Run(async () =>
             {
                 Console.WriteLine("Preparing installation tools…");
                 PrepareBundle();
                 cancellation.Token.ThrowIfCancellationRequested();
-                await EnsureWindowsTools();
+                if (!PrecompiledPackage.Enabled) await EnsureWindowsTools(cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();
+                if (updating)
+                {
+                    InstallationUpdate.Apply(InstallerEngine.BundleRoot!, target);
+                    return 0;
+                }
                 return InstallerEngine.Run(new[] { selectedIso, target });
             });
         }
-        catch (OperationCanceledException) { Console.WriteLine("Installation cancelled."); result = 1223; }
-        catch (Exception error) { Console.WriteLine(error.Message); result = 100; }
-        finally { Console.SetOut(previousWriter); }
+        catch (OperationCanceledException) { messages.Enqueue("Installation cancelled."); result = 1223; }
+        catch (Exception error)
+        {
+            messages.Enqueue(error.Message);
+            try { log?.WriteLine(error); }
+            catch (IOException) { /* The original error remains visible in the form. */ }
+            result = 100;
+        }
+        finally
+        {
+            Console.SetOut(previousWriter);
+            busy = false;
+            cancel.Enabled = false;
+            cancellation.Dispose();
+            cancellation = null;
+            InstallerEngine.CancellationToken = default;
+            progress.Style = ProgressBarStyle.Continuous;
+            install.Enabled = true;
+            try { log?.Dispose(); }
+            catch (IOException error) { messages.Enqueue("Could not finish writing the installation log: " + error.Message); }
+        }
         DrainMessages();
-        busy = false;
-        cancel.Enabled = false;
-        cancellation.Dispose();
-        cancellation = null;
-        InstallerEngine.CancellationToken = default;
-        progress.Style = ProgressBarStyle.Continuous;
-        install.Enabled = true;
         if (result == 0)
         {
             completed = true;
             installedPath = target;
             progress.Value = 100;
-            status.Text = "Installation complete. You can now launch the game.";
+            status.Text = updating ? "Update complete. Saves and preferences preserved." : "Installation complete. You can now launch the game.";
             install.Text = "OPEN LAUNCHER";
             cancel.SetBounds(620, 559, 271, 30);
             cancel.Text = "Create desktop shortcut";
             cancel.Enabled = true;
-            File.WriteAllText(Path.Combine(target, "Play FIFA Street.cmd"), "@echo off\r\ncd /d \"%~dp0\"\r\nstart \"\" \"%~dp0FifaStreetLauncher.exe\"\r\n", Encoding.ASCII);
+            try { File.WriteAllText(Path.Combine(target, "Play FIFA Street.cmd"), "@echo off\r\ncd /d \"%~dp0\"\r\nstart \"\" \"%~dp0FifaStreetLauncher.exe\"\r\n", Encoding.ASCII); }
+            catch (IOException error) { MessageBox.Show(this, "The game was installed, but the launch shortcut could not be written.\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+            catch (UnauthorizedAccessException error) { MessageBox.Show(this, "The game was installed, but the launch shortcut could not be written.\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
         else if (result == 1223)
         {
-            status.Text = "Installation cancelled. Incomplete files remain in the selected folder.";
+            status.Text = updating ? "Update cancelled. Previous files restored." : "Installation cancelled. Incomplete files remain in the selected folder.";
             install.Text = "INSTALL FIFA STREET";
             foreach (var input in inputs) input.Enabled = true;
+            RefreshInstallMode();
         }
         else
         {
-            status.Text = "Installation failed. Check the details and installation.log.";
+            status.Text = updating ? "Update failed. Check the details and update.log." : "Installation failed. Check the details and installation.log.";
             install.Text = "TRY AGAIN";
             foreach (var input in inputs) input.Enabled = true;
-            MessageBox.Show(this, $"Installation did not finish (code {result}).\n\nLog: {logPath}\nChoose an empty folder before trying again.", Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            RefreshInstallMode();
+            MessageBox.Show(this, $"Installation did not finish (code {result}).\n\nLog: {logPath}\n" + (updating ? "Keep your installation and check the log before trying again." : "Choose an empty folder before trying again."), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
     void CancelInstallation()
     {
         if (!busy || cancellation == null || cancellation.IsCancellationRequested) return;
-        if (MessageBox.Show(this, "Cancel installation? The game will not be ready to play. Incomplete files will remain in the selected folder.", Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        bool updating = PrecompiledPackage.Enabled && InstallationUpdate.IsInstallation(destination.Text);
+        string question = updating ? "Cancel update? The installer will restore the previous files. Keep the installer open until restoration finishes." : "Cancel installation? The game will not be ready to play. Incomplete files will remain in the selected folder.";
+        if (MessageBox.Show(this, question, Text, MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
         status.Text = "Cancelling installation…";
         cancel.Enabled = false;
         cancellation.Cancel();
@@ -331,7 +392,7 @@ internal sealed class SetupForm : Form
         while (messages.TryDequeue(out var line))
         {
             text.AppendLine(line);
-            if (line.StartsWith("Preparing ") || line.StartsWith("Extracting ") || line.StartsWith("Installing ") || line.StartsWith("Recompiling ") || line.Contains("/6]")) status.Text = line;
+            if (line.StartsWith("Preparing ") || line.StartsWith("Checking ") || line.StartsWith("Extracting ") || line.StartsWith("Installing ") || line.StartsWith("Recompiling ") || line.Contains("/6]")) status.Text = line;
         }
         if (text.Length == 0) return;
         if (details.TextLength > 50000) details.Clear();
@@ -349,14 +410,15 @@ internal sealed class SetupForm : Form
                 ?? throw new IOException("The installer does not contain the required tools.");
             using var zip = new ZipArchive(resource);
             zip.ExtractToDirectory(root, true);
-            File.Copy(Path.Combine(root, "compiler", "bin", "clang.exe"), Path.Combine(root, "compiler", "bin", "clang++.exe"), true);
+            if (!PrecompiledPackage.Enabled)
+                File.Copy(Path.Combine(root, "compiler", "bin", "clang.exe"), Path.Combine(root, "compiler", "bin", "clang++.exe"), true);
             File.WriteAllText(ready, "ready");
         }
         InstallerEngine.BundleRoot = root;
         Environment.SetEnvironmentVariable("FIFA_BUILD_ROOT", Path.Combine(Path.GetTempPath(), "FSB"));
     }
 
-    static async Task EnsureWindowsTools()
+    static async Task EnsureWindowsTools(System.Threading.CancellationToken token)
     {
         string vswhere = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft Visual Studio", "Installer", "vswhere.exe");
         if (File.Exists(vswhere))
@@ -364,17 +426,23 @@ internal sealed class SetupForm : Form
             var info = new ProcessStartInfo(vswhere) { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
             foreach (string arg in new[] { "-latest", "-products", "*", "-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath" }) info.ArgumentList.Add(arg);
             using var check = Process.Start(info)!;
-            string location = await check.StandardOutput.ReadToEndAsync();
-            await check.WaitForExitAsync();
+            string location = await check.StandardOutput.ReadToEndAsync(token);
+            await check.WaitForExitAsync(token);
             if (!string.IsNullOrWhiteSpace(location)) return;
         }
         Console.WriteLine("Preparing Windows components. Accept the Windows prompt to continue.");
         string bootstrapper = Path.Combine(Path.GetTempPath(), "FifaStreet-vs-buildtools.exe");
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-        using (var stream = await http.GetStreamAsync("https://aka.ms/vs/17/release/vs_buildtools.exe"))
-        using (var file = File.Create(bootstrapper)) await stream.CopyToAsync(file);
+        using (var stream = await http.GetStreamAsync("https://aka.ms/vs/17/release/vs_buildtools.exe", token))
+        using (var file = File.Create(bootstrapper)) await stream.CopyToAsync(file, token);
+        token.ThrowIfCancellationRequested();
+        // The elevated Microsoft installer manages shared system components.
+        // Keep this stage explicit instead of pretending the local Cancel
+        // button can safely terminate it midway through a system installation.
+        Console.WriteLine("Installing Windows components. This stage must finish before cancellation can complete.");
         using var setup = Process.Start(new ProcessStartInfo(bootstrapper, "--passive --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended") { UseShellExecute = true, Verb = "runas" })!;
         await setup.WaitForExitAsync();
+        token.ThrowIfCancellationRequested();
         if (setup.ExitCode != 0 && setup.ExitCode != 3010) throw new IOException($"Windows components could not be installed (code {setup.ExitCode}).");
         if (setup.ExitCode == 3010) throw new IOException("Restart Windows and run the installer again to continue.");
     }

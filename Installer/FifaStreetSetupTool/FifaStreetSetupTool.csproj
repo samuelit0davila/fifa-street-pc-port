@@ -13,7 +13,9 @@
     <EmbeddedResource Include="cover.jpg" LogicalName="cover.jpg" />
     <EmbeddedResource Include="credit-patch.json.gz" LogicalName="credit-patch.json.gz" />
     <EmbeddedResource Include="..\recomp-template\src\fifastreet.ico" LogicalName="fifastreet.ico" />
-    <EmbeddedResource Include="bundle.zip" LogicalName="bundle.zip" Condition="Exists('bundle.zip')" />
+    <EmbeddedResource Include="bundle.zip" LogicalName="bundle.zip" Condition="'$(BundlePath)' == '' and Exists('bundle.zip')" />
+    <EmbeddedResource Include="$(BundlePath)" LogicalName="bundle.zip" Condition="'$(BundlePath)' != ''" />
+    <EmbeddedResource Include="$(PrecompiledManifest)" LogicalName="precompiled-mode" Condition="'$(PrecompiledManifest)' != ''" />
   </ItemGroup>
 
 </Project>

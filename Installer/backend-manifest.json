@@ -1,0 +1,15 @@
+{
+  "version": "v0.4.0-candidate",
+  "backends": {
+    "D3D12": {
+      "source": "out/win-amd64/Release",
+      "runtimeHash": "cf737323bdeb0351cb9099574e16128ad5ded93876b8fb1ba9f6fe472572678b",
+      "gpuHash": "22ab97adf3da623ed74222e8d056f4db3ef2fefa45826855e61b6e48a4b96e6b"
+    },
+    "Vulkan": {
+      "source": "out/win-amd64-vulkan/Release",
+      "runtimeHash": "dec0334865571c14fde48fe4674d30ab74887c1d48253976ec05fb2027d62c16",
+      "gpuHash": "7ad2b33ba133e8bea425f678b69bf5332a3ffab3d1b58d0d522cb2a43a7f888b"
+    }
+  }
+}

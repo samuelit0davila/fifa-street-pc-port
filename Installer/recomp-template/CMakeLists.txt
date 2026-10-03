@@ -22,7 +22,7 @@ if(WIN32)
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set_source_files_properties(src/fifastreet.rc PROPERTIES
-            COMPILE_OPTIONS "-P"
+            COMPILE_OPTIONS "/nologo"
         )
         target_include_directories(fifastreet PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/src"

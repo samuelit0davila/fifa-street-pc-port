@@ -27,9 +27,15 @@ class FifastreetApp : public rex::ReXApp {
 
   void OnConfigurePaths(rex::PathConfig& paths) override {
     if (paths.game_data_root.empty()) {
-      auto bundled_data = rex::filesystem::GetExecutableFolder().parent_path() / "GameData";
-      if (std::filesystem::exists(bundled_data / "default.xex")) {
-        paths.game_data_root = bundled_data;
+      const auto executable_folder = rex::filesystem::GetExecutableFolder();
+      for (const auto& candidate : {executable_folder, executable_folder / "GameData",
+                                   executable_folder.parent_path() / "GameData",
+                                   executable_folder.parent_path()}) {
+        std::error_code error;
+        if (std::filesystem::is_regular_file(candidate / "default.xex", error)) {
+          paths.game_data_root = candidate;
+          break;
+        }
       }
     }
   }

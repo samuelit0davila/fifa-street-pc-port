@@ -36,6 +36,7 @@ function Invoke-BuildTool {
 }
 
 $installerRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $installerRoot "BuildIntegrity.ps1")
 
 $template = Join-Path $installerRoot "recomp-template"
 
@@ -159,11 +160,11 @@ includes = ["config/fifadllzf_overrides.toml"]
 guest_path = "game:\\FootballCompEngzf.xex.dll"
 file_path = "$gameDataUnix/dlc/dlc_FootballCompEng/dlc/FootballCompEng/FootballCompEngzf.xex.dll"
 out_directory_path = "generated/FootballCompEngzf_xex"
-includes = []
+includes = ["config/footballcompeng_overrides.toml"]
 "@
 
 $manifest = $manifest.Replace("`r`n", "`n")
-$manifestChanged = !$resume -or [IO.File]::ReadAllText($manifestPath).Replace("`r`n", "`n").Trim() -ne $manifest.Trim()
+$manifestChanged = !$resume -or !(Test-Path -LiteralPath $manifestPath) -or [IO.File]::ReadAllText($manifestPath).Replace("`r`n", "`n").Trim() -ne $manifest.Trim()
 if ($manifestChanged) {
     [System.IO.File]::WriteAllText($manifestPath, $manifest, [System.Text.UTF8Encoding]::new($false))
 }
@@ -203,10 +204,18 @@ try {
     # Generate sources before configuration so CMake discovers both binaries.
     $codegen = if ($useBundledSdk) { Join-Path $bundledSdk 'bin\rexglue.exe' } else { Join-Path $rexGlueSource 'out\win-amd64\rexglue.exe' }
     if (!(Test-Path -LiteralPath $codegen)) { throw "ReXGlue code generator not found: $codegen" }
-    if ($manifestChanged -or !(Test-Path -LiteralPath (Join-Path $generatedDefault 'sources.cmake')) -or
+    $fingerprintPath = Join-Path $workProject 'codegen-inputs.sha256'
+    $fingerprintInputs = @($manifestPath, $codegen)
+    $fingerprintInputs += @(Get-ChildItem -LiteralPath $GameData -Filter '*.xex*' -File -Recurse | ForEach-Object { $_.FullName })
+    $fingerprintInputs += @(Get-ChildItem -LiteralPath (Join-Path $workProject 'config') -File -Recurse | ForEach-Object { $_.FullName })
+    $fingerprint = Get-CodegenFingerprint $fingerprintInputs
+    $inputsChanged = !(Test-Path -LiteralPath $fingerprintPath) -or [IO.File]::ReadAllText($fingerprintPath).Trim() -ne $fingerprint
+    if ($manifestChanged -or $inputsChanged -or !(Test-Path -LiteralPath (Join-Path $generatedDefault 'sources.cmake')) -or
         !(Test-Path -LiteralPath (Join-Path $generatedDll 'sources.cmake')) -or
         !(Test-Path -LiteralPath (Join-Path $generatedFootballComp 'sources.cmake'))) {
+        if (Test-Path -LiteralPath $fingerprintPath) { Remove-Item -LiteralPath $fingerprintPath -Force }
         Invoke-BuildTool $codegen @('--log-file', (Join-Path $workRoot 'codegen.log'), 'codegen', $manifestPath)
+        [IO.File]::WriteAllText($fingerprintPath, $fingerprint, [Text.UTF8Encoding]::new($false))
     }
 
     $sdkArguments = if ($useBundledSdk) { @('-DREXSDK_DIR=', "-DCMAKE_PREFIX_PATH=$bundledSdk") } else { @("-DREXSDK_DIR=$rexGlueSource") }

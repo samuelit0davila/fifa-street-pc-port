@@ -31,6 +31,8 @@ public class LauncherForm : Form
     private readonly List<int> gpuAdapterIndices = new();
     private readonly ComboBox postEffectBox = new();
     private readonly ComboBox internalResolutionBox = new();
+    private readonly ComboBox gameLanguageBox = new();
+    private static readonly int[] GameLanguageIds = { 1, 5, 4, 3, 6 };
 
     private readonly CheckBox vsyncBox = new();
     private readonly CheckBox vrrBox = new();
@@ -53,6 +55,10 @@ public class LauncherForm : Form
     private readonly RoundedPanel compatibilityPanel = new();
     private readonly ModernButton compatibilityButton = new();
 
+    private bool gameRunning;
+    private bool closeAfterGame;
+    private string? changedDisplay;
+    private DEVMODE previousDisplayMode;
     private bool advancedVisible;
     private bool compatibilityVisible;
 
@@ -79,6 +85,8 @@ public class LauncherForm : Form
         WireEvents();
         LoadDefaults();
         LoadSettings();
+        UpdateGraphicsApiState();
+        UpdateRefreshRates();
         UpdateSummary();
         UpdateStatus("Ready to play", true);
     }
@@ -158,10 +166,16 @@ public class LauncherForm : Form
         displayCard.Controls.Add(displayModeBox);
 
         AddFieldLabel(displayCard, "Monitor", 24, 218);
-        ConfigureCombo(monitorBox, 24, 242, 372);
+        ConfigureCombo(monitorBox, 24, 242, 180);
         displayCard.Controls.Add(monitorBox);
+        AddFieldLabel(displayCard, "Game language", 216, 218);
+        ConfigureCombo(gameLanguageBox, 216, 242, 180);
+        gameLanguageBox.AccessibleName = "Game language";
+        displayCard.Controls.Add(gameLanguageBox);
 
         ConfigureCheck(vsyncBox, "VSync", 24, 300);
+        vsyncBox.CheckedChanged += (_, _) => UpdateGraphicsApiState();
+        readbackMemexportBox.CheckedChanged += (_, _) => UpdateGraphicsApiState();
         ConfigureCheck(vrrBox, "VRR / Tearing", 216, 300);
         displayCard.Controls.Add(vsyncBox);
         displayCard.Controls.Add(vrrBox);
@@ -202,7 +216,7 @@ graphicsCard.Controls.Add(fpsTitle);
 
 var fpsInfo = new Label
 {
-    Text = "Controlled by the game, VSync and refresh rate",
+    Text = "Game frame rate; Hz selects display refresh",
     ForeColor = TextSecondary,
     Font = new Font("Segoe UI", 8.7F),
     AutoSize = true,
@@ -314,7 +328,7 @@ var fpsInfo = new Label
         FormClosed += (_, _) => artwork.Image?.Dispose();
         var credit = new Label
         {
-            Text = "PORTED BY: SAMUELITODAVILA", AutoSize = true,
+            Text = "PORTED BY: SAMUELITODAVILA\nContributions: Emran_Ahm3d", AutoSize = true,
             ForeColor = Accent, Font = new Font("Segoe UI", 8.5F),
             Location = new Point(730, 674), Tag = "credit"
         };
@@ -436,7 +450,7 @@ var fpsInfo = new Label
             UpdateSummary();
         };
 
-        resolutionBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+        resolutionBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateSummary(); };
 internalResolutionBox.SelectedIndexChanged += (_, _) => UpdateSummary();
 refreshBox.SelectedIndexChanged += (_, _) => UpdateSummary();
 gpuBox.SelectedIndexChanged += (_, _) => UpdateSummary();
@@ -459,7 +473,7 @@ gpuBox.DropDown += (_, _) =>
 
     gpuBox.DropDownWidth = Math.Min(width, 500);
 };
-displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateSummary(); };
     }
 
     private void ToggleAdvanced()
@@ -643,6 +657,8 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
             "Vulkan"
         });
         graphicsApiBox.SelectedIndex = 0;
+        gameLanguageBox.Items.AddRange(new object[] { "English", "Español", "Français", "Deutsch", "Italiano" });
+        gameLanguageBox.SelectedIndex = 0;
 
         monitorBox.Items.Clear();
         foreach (var screen in Screen.AllScreens)
@@ -654,7 +670,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
         }
 
         if (monitorBox.Items.Count > 0)
-            monitorBox.SelectedIndex = 0;
+            monitorBox.SelectedIndex = Math.Max(0, Array.FindIndex(Screen.AllScreens, screen => screen.Primary));
 
         DetectDisplayModes();
         DetectGpus();
@@ -665,7 +681,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
     "FXAA",
     "FXAA Extreme"
 });
-       postEffectBox.SelectedIndex = 0;
+       postEffectBox.SelectedIndex = 2;
 
        internalResolutionBox.Items.AddRange(new object[]
 {
@@ -674,18 +690,18 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
        "3x - 3840 x 2160",
        "4x - 5120 x 2880"
 });
-       internalResolutionBox.SelectedIndex = 0;
+       internalResolutionBox.SelectedIndex = 1;
 
 
         readbackMemexportBox.Checked = true;
         readbackMemexportFastBox.Checked = true;
-        clearMemoryPageStateBox.Checked = false;
+        clearMemoryPageStateBox.Checked = true;
         occlusionQueryBox.Checked = true;
-        asyncShadersBox.Checked = false;
+        asyncShadersBox.Checked = true;
 
         vsyncBox.Checked = false;
-        vrrBox.Checked = false;
-        msaaBox.Checked = false;
+        vrrBox.Checked = true;
+        msaaBox.Checked = true;
     }
 
     private void DetectGpus()
@@ -909,6 +925,36 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
         }
     }
 
+    private void UpdateRefreshRates()
+    {
+        if (monitorBox.SelectedIndex < 0 || resolutionBox.SelectedIndex < 0) return;
+        string previous = refreshBox.Text;
+        Screen screen = Screen.AllScreens[monitorBox.SelectedIndex];
+        DEVMODE desktop = CreateDevMode();
+        if (!EnumDisplaySettings(screen.DeviceName, ENUM_CURRENT_SETTINGS, ref desktop)) return;
+        string[] size = resolutionBox.Text.Split('x');
+        if (size.Length != 2 || !int.TryParse(size[0], out int width) ||
+            !int.TryParse(size[1], out int height)) return;
+        if (displayModeBox.SelectedIndex != 0) {
+            width = desktop.dmPelsWidth;
+            height = desktop.dmPelsHeight;
+        }
+        var rates = new SortedSet<int>();
+        for (int i = 0; ; i++) {
+            DEVMODE mode = CreateDevMode();
+            if (!EnumDisplaySettings(screen.DeviceName, i, ref mode)) break;
+            if (mode.dmPelsWidth == width && mode.dmPelsHeight == height &&
+                mode.dmBitsPerPel >= 32 && mode.dmDisplayFrequency > 20)
+                rates.Add(mode.dmDisplayFrequency);
+        }
+        refreshBox.Items.Clear();
+        foreach (int rate in rates) refreshBox.Items.Add(rate.ToString());
+        if (refreshBox.Items.Contains(previous)) refreshBox.SelectedItem = previous;
+        else if (refreshBox.Items.Contains(desktop.dmDisplayFrequency.ToString()))
+            refreshBox.SelectedItem = desktop.dmDisplayFrequency.ToString();
+        else if (refreshBox.Items.Count > 0) refreshBox.SelectedIndex = 0;
+    }
+
     private static DEVMODE CreateDevMode()
     {
         return new DEVMODE
@@ -926,6 +972,9 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
         // GPU adapter selection is currently specific to the D3D12 backend.
         // Vulkan uses automatic device selection (REX_VULKAN_DEVICE=-1).
         gpuBox.Enabled = isD3D12;
+        vrrBox.Enabled = isD3D12 && !vsyncBox.Checked;
+        vrrBox.Text = "VRR / Tearing (D3D12)";
+        readbackMemexportFastBox.Enabled = readbackMemexportBox.Checked;
 
         if (!isD3D12)
         {
@@ -969,8 +1018,12 @@ displayModeBox.SelectedIndexChanged += (_, _) => UpdateSummary();
         statusLabel.ForeColor = ok ? TextSecondary : Color.FromArgb(255, 120, 120);
     }
 
-    private void LaunchGame()
+    private async void LaunchGame()
     {
+        if (gameRunning) {
+            ShowError("FIFA Street is already running.");
+            return;
+        }
         try
         {
             string exe = exePathBox.Text.Trim();
@@ -1103,10 +1156,16 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
     internalResolutionScale.ToString();
             startInfo.Environment["REX_WINDOW_WIDTH"] = width.ToString();
             startInfo.Environment["REX_WINDOW_HEIGHT"] = height.ToString();
+            // Apply the selected rate to both the monitor and Xbox video timing.
             startInfo.Environment["REX_VIDEO_MODE_REFRESH_RATE"] = refresh;
+            ApplyGameLanguage(startInfo);
+            // Disable the guest pacing limit together with display VSync.
+            startInfo.Environment["REX_GUEST_VBLANK_UNLOCKED"] =
+                vsyncBox.Checked ? "false" : "true";
             startInfo.Environment["REX_FULLSCREEN"] =
                 fullscreen ? "true" : "false";
-            startInfo.Environment["REX_MONITOR"] = monitor.ToString();
+            startInfo.Environment["REX_MONITOR"] = (monitor + 1).ToString();
+            startInfo.Environment["REX_LAUNCHER_MONITOR_DEVICE"] = Screen.AllScreens[monitor].DeviceName;
             startInfo.Environment["REX_VSYNC"] =
                 vsyncBox.Checked ? "true" : "false";
             startInfo.Environment["REX_NATIVE_2X_MSAA"] =
@@ -1117,7 +1176,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
             {
                 // Validated D3D12 configuration.
                 startInfo.Environment["REX_D3D12_ALLOW_VARIABLE_REFRESH_RATE_AND_TEARING"] =
-                    vrrBox.Checked ? "true" : "false";
+                    !vsyncBox.Checked && vrrBox.Checked ? "true" : "false";
                 startInfo.Environment["REX_D3D12_ADAPTER"] = adapter.ToString();
 
                 // Do not force ROV/RTV. The validated D3D12 build uses
@@ -1131,14 +1190,30 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 // not interchangeable with Vulkan device indices.
                 startInfo.Environment["REX_VULKAN_DEVICE"] = "-1";
                 startInfo.Environment["REX_RENDER_TARGET_PATH_VULKAN"] = "fbo";
+                // Override legacy TOML values: checked means FIFO, unchecked
+                // requests immediate presentation without display synchronization.
+                startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_IMMEDIATE"] =
+                    vsyncBox.Checked ? "false" : "true";
+                startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_MAILBOX"] = "false";
+                startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_FIFO_RELAXED"] =
+                    vsyncBox.Checked ? "false" : "true";
             }
 
             // Compatibilidade / coerência GPU.
             startInfo.Environment["REX_READBACK_RESOLVE"] = "full";
+            // Keep synchronous Full Readback; reduce scheduler round trips for
+            // short GPU work without reading before its fence is signalled.
+            startInfo.Environment["REX_D3D12_READBACK_SHORT_WAIT"] = "true";
+            startInfo.Environment["REX_D3D12_READBACK_SPIN_US"] = "500";
+            startInfo.Environment["REX_VULKAN_READBACK_SHORT_WAIT"] = "true";
+            startInfo.Environment["REX_VULKAN_READBACK_SPIN_US"] = "500";
             startInfo.Environment["REX_READBACK_MEMEXPORT"] =
                 readbackMemexportBox.Checked ? "true" : "false";
+            startInfo.Environment[graphicsApi == "Vulkan"
+                ? "REX_VULKAN_READBACK_MEMEXPORT" : "REX_D3D12_READBACK_MEMEXPORT"] =
+                readbackMemexportBox.Checked ? "true" : "false";
             startInfo.Environment["REX_READBACK_MEMEXPORT_FAST"] =
-                readbackMemexportFastBox.Checked ? "true" : "false";
+                readbackMemexportBox.Checked && readbackMemexportFastBox.Checked ? "true" : "false";
             startInfo.Environment["REX_CLEAR_MEMORY_PAGE_STATE"] =
                 clearMemoryPageStateBox.Checked ? "true" : "false";
             startInfo.Environment["REX_OCCLUSION_QUERY_ENABLE"] =
@@ -1167,17 +1242,20 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 launcherDebug,
                 $"Resolution={width}x{height}{Environment.NewLine}" +
                 $"InternalResolution={1280 * internalResolutionScale}x{720 * internalResolutionScale} ({internalResolutionScale}x){Environment.NewLine}" +
-                $"RefreshRate={refresh}{Environment.NewLine}" +
+                $"MonitorRefreshRate={refresh}{Environment.NewLine}" +
+                $"GuestRefreshRate={refresh}{Environment.NewLine}" +
+                $"GuestVblankUnlocked={!vsyncBox.Checked}{Environment.NewLine}" +
+                $"GraphicsApi={graphicsApi}{Environment.NewLine}" +
                 $"Fullscreen={fullscreen}{Environment.NewLine}" +
                 $"Monitor={monitor}{Environment.NewLine}" +
                 $"VSync={vsyncBox.Checked}{Environment.NewLine}" +
-                $"VRR={vrrBox.Checked}{Environment.NewLine}" +
+                $"VRRRequested={vrrBox.Checked}; VRREffective={graphicsApi == "D3D12" && !vsyncBox.Checked && vrrBox.Checked}{Environment.NewLine}" +
                 $"MSAA={msaaBox.Checked}{Environment.NewLine}" +
                 $"PostEffect={postEffect}{Environment.NewLine}" +
                 $"Adapter={adapter}{Environment.NewLine}" +
                 $"ReadbackResolve=full (fixed){Environment.NewLine}" +
                 $"ReadbackMemexport={readbackMemexportBox.Checked}{Environment.NewLine}" +
-                $"ReadbackMemexportFast={readbackMemexportFastBox.Checked}{Environment.NewLine}" +
+                $"ReadbackMemexportFast={readbackMemexportBox.Checked && readbackMemexportFastBox.Checked}{Environment.NewLine}" +
                 $"ClearMemoryPageState={clearMemoryPageStateBox.Checked}{Environment.NewLine}" +
                 $"OcclusionQueries={occlusionQueryBox.Checked}{Environment.NewLine}" +
                 $"AsyncShaders={asyncShadersBox.Checked}{Environment.NewLine}"
@@ -1185,7 +1263,9 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
             UpdateStatus("Starting FIFA Street...", true);
 
-            var process = Process.Start(startInfo);
+            ApplyMonitorRefresh(monitor, refresh, fullscreen ? width : 0, fullscreen ? height : 0);
+            using var process = Process.Start(startInfo);
+            gameRunning = process != null;
 
             UpdateStatus(
                 process != null
@@ -1193,6 +1273,10 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                     : "Could not start the game",
                 process != null
             );
+            if (process != null) {
+                await process.WaitForExitAsync();
+                UpdateStatus("Ready to play", true);
+            }
         }
         catch (Exception ex)
         {
@@ -1204,6 +1288,81 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
+        }
+        finally {
+            RestoreMonitorRefresh();
+            gameRunning = false;
+            if (closeAfterGame) Close();
+        }
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (gameRunning && e.CloseReason == CloseReason.UserClosing) {
+            // Keep the launcher alive to restore the display after the game exits.
+            closeAfterGame = true;
+            e.Cancel = true;
+            Hide();
+        }
+        base.OnFormClosing(e);
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Ansi)]
+    private static extern int ChangeDisplaySettingsEx(
+        string deviceName, ref DEVMODE mode, IntPtr window, uint flags, IntPtr parameter);
+
+    private void ApplyMonitorRefresh(int monitor, string refresh, int width, int height)
+    {
+        const uint CDS_TEST = 2, CDS_FULLSCREEN = 4;
+        const int DM_DISPLAYFREQUENCY = 0x00400000;
+        if (monitor < 0 || monitor >= Screen.AllScreens.Length ||
+            !int.TryParse(refresh, out int hz) || hz <= 1) {
+            throw new InvalidOperationException("Select a valid monitor and refresh rate.");
+        }
+        string device = Screen.AllScreens[monitor].DeviceName;
+        DEVMODE original = CreateDevMode();
+        if (!EnumDisplaySettings(device, ENUM_CURRENT_SETTINGS, ref original)) {
+            throw new InvalidOperationException("Could not read the monitor's current display mode.");
+        }
+        bool changeResolution = width > 0 && height > 0;
+        if (original.dmDisplayFrequency == hz &&
+            (!changeResolution || (original.dmPelsWidth == width && original.dmPelsHeight == height))) return;
+        DEVMODE requested = original;
+        requested.dmDisplayFrequency = hz;
+        requested.dmFields = DM_DISPLAYFREQUENCY;
+        if (changeResolution) {
+            requested.dmPelsWidth = width;
+            requested.dmPelsHeight = height;
+            requested.dmFields |= 0x00080000 | 0x00100000; // DM_PELSWIDTH | DM_PELSHEIGHT
+        }
+        int result = ChangeDisplaySettingsEx(device, ref requested, IntPtr.Zero, CDS_TEST, IntPtr.Zero);
+        if (result != 0) {
+            throw new InvalidOperationException(
+                $"The selected resolution and {hz} Hz are not available on this monitor (Windows code {result}).");
+        }
+        result = ChangeDisplaySettingsEx(device, ref requested, IntPtr.Zero, CDS_FULLSCREEN, IntPtr.Zero);
+        if (result != 0) {
+            throw new InvalidOperationException($"Windows could not apply {hz} Hz (code {result}).");
+        }
+        original.dmFields = requested.dmFields;
+        previousDisplayMode = original;
+        changedDisplay = device;
+        DEVMODE actual = CreateDevMode();
+        if (!EnumDisplaySettings(device, ENUM_CURRENT_SETTINGS, ref actual) ||
+            Math.Abs(actual.dmDisplayFrequency - hz) > 1 ||
+            (changeResolution && (actual.dmPelsWidth != width || actual.dmPelsHeight != height))) {
+            throw new InvalidOperationException("Windows did not apply the selected monitor refresh rate.");
+        }
+    }
+
+    private void RestoreMonitorRefresh()
+    {
+        if (changedDisplay == null) return;
+        string device = changedDisplay;
+        changedDisplay = null;
+        int result = ChangeDisplaySettingsEx(device, ref previousDisplayMode, IntPtr.Zero, 0, IntPtr.Zero);
+        if (result != 0) {
+            ShowError($"Could not restore the monitor refresh rate (Windows code {result}). Check Windows display settings.");
         }
     }
 
@@ -1245,8 +1404,10 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
     {
         string exe = exePathBox.Text.Trim();
 
-        if (!File.Exists(exe))
+        if (!File.Exists(exe)) {
+            ShowError("Select an existing game executable first.");
             return;
+        }
 
         string logs = Path.Combine(
             Path.GetDirectoryName(exe)!,
@@ -1267,8 +1428,10 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
     {
         string exe = exePathBox.Text.Trim();
 
-        if (!File.Exists(exe))
+        if (!File.Exists(exe)) {
+            ShowError("Select an existing game executable first.");
             return;
+        }
 
         Process.Start(new ProcessStartInfo
         {
@@ -1291,6 +1454,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 Fullscreen = displayModeBox.SelectedIndex == 0,
                 Monitor = monitorBox.SelectedIndex,
                 GraphicsApi = graphicsApiBox.SelectedIndex,
+                GameLanguage = GameLanguageIds[Math.Max(0, gameLanguageBox.SelectedIndex)],
                 Gpu = gpuBox.SelectedIndex,
                 GpuUsesDxgi = true,
                 PostEffect = postEffectBox.SelectedIndex,
@@ -1315,8 +1479,9 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
             File.WriteAllText(SettingsPath, json);
         }
-        catch
+        catch (Exception ex)
         {
+            throw new IOException("Could not save launcher settings: " + ex.Message, ex);
         }
     }
 
@@ -1334,6 +1499,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
             if (settings == null)
                 return;
+            int languageIndex = Array.IndexOf(GameLanguageIds, settings.GameLanguage);
+            gameLanguageBox.SelectedIndex = Math.Max(0, languageIndex);
 
             exePathBox.Text = settings.ExePath ?? exePathBox.Text;
             const string oldDefaultExe = @"C:\Users\Samuel M\Desktop\FIFASTREET - 2012\Jogo\FifaStreetRex\out\build\win-amd64-debug\fifastreet.exe";
@@ -1406,6 +1573,12 @@ if (settings.InternalResolutionScale >= 0 &&
             box.SelectedIndex = index;
     }
 
+    private void ApplyGameLanguage(ProcessStartInfo startInfo)
+    {
+        int index = Math.Max(0, gameLanguageBox.SelectedIndex);
+        startInfo.Environment["REX_USER_LANGUAGE"] = GameLanguageIds[index].ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private sealed class MessiPicture : PictureBox
     {
         private const float CropX = 100f / 1280f;
@@ -1450,6 +1623,7 @@ public class LauncherSettings
     public bool Fullscreen { get; set; } = true;
     public int Monitor { get; set; }
     public int GraphicsApi { get; set; } = 0;
+    public int GameLanguage { get; set; } = 1;
     public int Gpu { get; set; }
     public bool GpuUsesDxgi { get; set; }
     public int PostEffect { get; set; }

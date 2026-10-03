@@ -16,9 +16,19 @@
 
 ## About
 
+## v0.4.0 Experimental
+
+The v0.4.0 installer includes precompiled game binaries for faster installation, updates that preserve saves and preferences, and English, Spanish, French, German and Italian selection in the launcher. See [the changelog](CHANGELOG.md) and [credits](CREDITS.md).
+
+**Latest download:** [FifaStreetSetup.exe — v0.4.0 Experimental](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/installers/FifaStreetSetup.exe) · [SHA-256](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/installers/FifaStreetSetup.exe.sha256) · [Third-party notices](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/notices/Third-party-notices-v0.4.0.zip)
+
+For a new installation, provide your own ISO. To update, select your existing installation folder containing `Game` and `GameData`; no ISO extraction is needed. Only builds matching the three verified original module hashes are accepted. A shared title ID or a PAL/NTSC label alone does not establish compatibility.
+
+The instructions and download links below describe the earlier v0.3.0 source installer. Unlike v0.3.0, v0.4.0 contains generated game binaries. Their redistribution rights have not been established by the project's MIT licence; no legal clearance is claimed.
+
 I'm bringing FIFA Street (2012) to Windows PC using ReXGlue. The project includes a graphical installer and a dedicated launcher with Direct3D 12 and Vulkan support, display settings, independent internal-resolution scaling and compatibility controls.
 
-The installer uses your own Xbox 360 ISO to extract the game files, apply my menu credits and compile the game locally. I don't include an ISO, original game data or generated game binaries in this repository or installer.
+The v0.3.0 source installer uses your own Xbox 360 ISO to extract the game files, apply my menu credits and compile the game locally. The v0.4.0 installer instead includes generated game binaries and extracts data from your ISO. Original ISOs and extracted game data are not included. Generated binaries are release assets, not source repository files.
 
 ## Download and install
 
@@ -109,6 +119,8 @@ If you encounter a problem, [open an issue](https://gitlab.com/samuelitodavila-g
 ## Credits and licence
 
 I developed this project with assistance from **ChatGPT and OpenAI Codex**, and directed and tested the work myself.
+
+Thanks to **Emran_Ahm3d** for investigating and suggesting the Windows patch line-ending fix, module-registration path handling, flexible game-data paths, the FootballCompEng function-boundary override and resource-compiler compatibility. These contributions informed the integrated fixes and were reviewed and tested locally. His proposed general boundary scanner has not been integrated.
 
 Thanks to [ReXGlue](https://github.com/rexglue/rexglue-sdk), [Xenia](https://github.com/xenia-project/xenia), [extract-xiso](https://github.com/XboxDev/extract-xiso), LLVM, CMake, Ninja, .NET and MonoGame. See the [third-party notices](licenses/README.md).
 

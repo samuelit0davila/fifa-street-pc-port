@@ -57,7 +57,7 @@ internal class InstallerEngine
             return 4;
         }
 
-        string tempFolder = Path.Combine(Path.GetTempPath(), "FifaStreetSetup_" + Guid.NewGuid().ToString("N"));
+        string tempFolder = Path.Combine(installFolder, ".extract-" + Guid.NewGuid().ToString("N"));
 
         try
         {
@@ -98,6 +98,15 @@ internal class InstallerEngine
 
             if (!ValidateGame(gameRoot)) return 7;
 
+            string installerRoot = FindInstallerRoot()
+                ?? throw new Exception("The installer package was not found.");
+            if (PrecompiledPackage.Enabled)
+            {
+                Console.WriteLine("Checking ISO version and installation files...");
+                var package = PrecompiledPackage.Validate(installerRoot, gameRoot);
+                Console.WriteLine($"Supported game version: {package.Version}");
+            }
+
             Console.WriteLine("FIFA Street files validated.");
             Console.WriteLine();
 
@@ -115,11 +124,13 @@ internal class InstallerEngine
                 Console.WriteLine();
             }
 
-            CopyDirectory(gameRoot, gameDataFolder);
+            CancellationToken.ThrowIfCancellationRequested();
+            if (!Directory.Exists(gameDataFolder))
+                Directory.Move(gameRoot, gameDataFolder);
+            else
+                CopyDirectory(gameRoot, gameDataFolder);
             Directory.CreateDirectory(gameFolder);
 
-            string installerRoot = FindInstallerRoot()
-                ?? throw new Exception("The installer folder containing BuildFifaStreet.ps1 was not found.");
             string payload = Path.Combine(installerRoot, "payload");
             if (!Directory.Exists(payload))
                 throw new Exception("The payload folder was not found.");
@@ -128,29 +139,34 @@ internal class InstallerEngine
             Console.WriteLine("Applying the start screen and main menu credits...");
             CreditPatch.Apply(gameDataFolder);
 
-            Console.WriteLine("Recompiling the game on your PC. This may take some time.");
-            var buildInfo = new ProcessStartInfo
+            if (!PrecompiledPackage.Enabled)
             {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            foreach (string argument in new[] {
-                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                Path.Combine(installerRoot, "BuildFifaStreet.ps1"),
-                "-GameData", gameDataFolder, "-Output", gameFolder })
-                buildInfo.ArgumentList.Add(argument);
-            if (args.Length >= 3)
-            {
-                buildInfo.ArgumentList.Add("-Workspace");
-                buildInfo.ArgumentList.Add(Path.GetFullPath(args[2]));
-            }
+                Console.WriteLine("Recompiling the game on your PC. This may take some time.");
+                var buildInfo = new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true
+                };
+                foreach (string argument in new[] {
+                    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                    Path.Combine(installerRoot, "BuildFifaStreet.ps1"),
+                    "-GameData", gameDataFolder, "-Output", gameFolder })
+                    buildInfo.ArgumentList.Add(argument);
+                if (args.Length >= 3)
+                {
+                    buildInfo.ArgumentList.Add("-Workspace");
+                    buildInfo.ArgumentList.Add(Path.GetFullPath(args[2]));
+                }
 
-            int buildResult = RunProcess(buildInfo);
-            if (buildResult != 0)
-                throw new Exception($"Recompilation failed with code {buildResult}. Check the build log for details.");
+                int buildResult = RunProcess(buildInfo);
+                if (buildResult != 0)
+                    throw new Exception($"Recompilation failed with code {buildResult}. Check the build log for details.");
+            }
+            else
+                Console.WriteLine("Installing precompiled game files. No compiler is required.");
 
             foreach (string binary in new[] {
                 "fifastreet.exe",
@@ -230,7 +246,8 @@ internal class InstallerEngine
         if (BundleRoot != null) return BundleRoot;
         foreach (string start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
             for (DirectoryInfo? folder = new DirectoryInfo(start); folder != null; folder = folder.Parent)
-                if (File.Exists(Path.Combine(folder.FullName, "BuildFifaStreet.ps1")))
+                if (File.Exists(Path.Combine(folder.FullName, "BuildFifaStreet.ps1")) ||
+                    (PrecompiledPackage.Enabled && File.Exists(Path.Combine(folder.FullName, "precompiled.json"))))
                     return folder.FullName;
         return null;
     }
@@ -292,7 +309,7 @@ internal class InstallerEngine
 
     static bool ValidateGame(string folder)
     {
-        string[] requiredFiles = { "default.xex", "fifadllzf.xex.dll", "data0.big", "data1.big" };
+        string[] requiredFiles = { "default.xex", "fifadllzf.xex.dll", "data0.big", "data1.big", "data1.bh" };
         foreach (string required in requiredFiles)
         {
             string path = Path.Combine(folder, required);

@@ -124,6 +124,7 @@ internal static class CreditPatch
         Recipe[] recipes = JsonSerializer.Deserialize<Recipe[]>(gzip)!;
         string big = Path.Combine(gameData, "data1.big"), bh = Path.Combine(gameData, "data1.bh");
         string staged = big + ".credit.tmp", stagedBh = bh + ".credit.tmp", backup = big + ".credit.rollback";
+        FilePairTransaction.Recover(big, bh);
         Require(!File.Exists(staged) && !File.Exists(stagedBh) && !File.Exists(backup), "An interrupted menu patch needs recovery before retrying.");
         byte[] index = File.ReadAllBytes(bh), header;
         var replacements = new List<(Entry Entry, byte[] Data, int BhPosition)>();
@@ -142,7 +143,6 @@ internal static class CreditPatch
             }
         }
         if (replacements.Count == 0) { Console.WriteLine("Menu credits already applied."); return; }
-        bool committed = false;
         try
         {
             using (var input = File.OpenRead(big))
@@ -159,11 +159,9 @@ internal static class CreditPatch
                 BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(4, 4), checked((uint)output.Length)); output.Position = 0; output.Write(header); output.Flush(true);
             }
             File.WriteAllBytes(stagedBh, index); InstallerEngine.CancellationToken.ThrowIfCancellationRequested();
-            File.Replace(staged, big, backup); committed = true;
-            File.Move(stagedBh, bh, true); File.Delete(backup);
+            FilePairTransaction.Commit(big, staged, bh, stagedBh);
             Console.WriteLine("PORTED BY: SAMUELITODAVILA applied to the start screen and main menu.");
         }
-        catch { if (committed && File.Exists(backup)) File.Move(backup, big, true); throw; }
-        finally { if (File.Exists(staged)) File.Delete(staged); if (File.Exists(stagedBh)) File.Delete(stagedBh); }
+        finally { FilePairTransaction.TryDelete(staged); FilePairTransaction.TryDelete(stagedBh); }
     }
 }

@@ -3,23 +3,29 @@ param(
     [string]$LLVMRoot = 'C:\Program Files\LLVM',
     [string]$CMakeRoot = 'C:\Program Files\CMake',
     [string]$NinjaPath = (Get-Command ninja.exe -ErrorAction Stop).Source,
+    [string]$ReXGlueRoot,
+    [string]$BackendManifest,
     [string]$ClangResourceVersion
 )
 $ErrorActionPreference = 'Stop'
 if (-not $ClangResourceVersion) {
     $ClangResourceVersion = (Get-ChildItem -LiteralPath (Join-Path $LLVMRoot 'lib\clang') -Directory |
-        Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1).Name
+        Sort-Object { if ($_.Name.Contains('.')) { [version]$_.Name } else { [version]($_.Name + '.0') } } -Descending | Select-Object -First 1).Name
 }
 if (-not $ClangResourceVersion) { throw 'Clang resource directory was not found.' }
 $root = $PSScriptRoot
 $projectRoot = Split-Path $root -Parent
+. (Join-Path $root "BuildIntegrity.ps1")
+if (!$ReXGlueRoot) { $ReXGlueRoot = Join-Path $projectRoot "ReXGlue" }
+if (!$BackendManifest) { $BackendManifest = Join-Path $root "backend-manifest.json" }
+$backendInputs = Get-Content -LiteralPath $BackendManifest -Raw | ConvertFrom-Json
 $stage = Join-Path $env:TEMP ('FifaStreetPackage_' + [guid]::NewGuid().ToString('N'))
 $utf8 = [Text.UTF8Encoding]::new($false)
 New-Item -ItemType Directory -Path $stage | Out-Null
-foreach ($name in @('BuildFifaStreet.ps1', 'README.md')) { Copy-Item -LiteralPath (Join-Path $root $name) -Destination $stage }
+foreach ($name in @('BuildFifaStreet.ps1', 'BuildIntegrity.ps1', 'README.md')) { Copy-Item -LiteralPath (Join-Path $root $name) -Destination $stage }
 $template = Join-Path $stage 'recomp-template'
 foreach ($name in @('', 'config', 'src', 'generated')) { New-Item -ItemType Directory -Path (Join-Path $template $name) -Force | Out-Null }
-foreach ($name in @('CMakeLists.txt','CMakePresets.json','fifastreet_manifest.toml','config\fifadllzf_overrides.toml','src\main.cpp','src\fifastreet_app.h','src\stubs.cpp','generated\rexglue.cmake')) {
+foreach ($name in @('CMakeLists.txt','CMakePresets.json','fifastreet_manifest.toml','config\fifadllzf_overrides.toml','config\footballcompeng_overrides.toml','src\main.cpp','src\fifastreet_app.h','src\stubs.cpp','generated\rexglue.cmake')) {
     Copy-Item -LiteralPath (Join-Path $root "recomp-template\$name") -Destination (Join-Path $template $name)
 }
 Copy-Item -LiteralPath (Join-Path $root 'recomp-template\src\fifastreet.ico') -Destination (Join-Path $template 'src\fifastreet.ico')
@@ -33,10 +39,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar o launcher.' }
 Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter '*.pdb' | Remove-Item
 
 # Use the installed public SDK layout, with the current runtime and code generator.
-Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\out\install\win-amd64') -Destination (Join-Path $stage 'sdk') -Recurse
-$current = Join-Path $projectRoot 'ReXGlue\out\win-amd64'
+Copy-Item -LiteralPath (Join-Path $ReXGlueRoot 'out\install\win-amd64') -Destination (Join-Path $stage 'sdk') -Recurse
+$current = Join-Path $ReXGlueRoot 'out\win-amd64'
+$backendRuntime = Join-Path $ReXGlueRoot $backendInputs.backends.Vulkan.source
 foreach ($name in @('rexglue.exe','rexruntime.dll','rexgpu-xenos.dll','TracyClient.dll')) { Copy-Item -LiteralPath (Join-Path $current $name) -Destination (Join-Path $stage 'sdk\bin') -Force }
 Get-ChildItem -LiteralPath $current -Filter '*.lib' | Copy-Item -Destination (Join-Path $stage 'sdk\lib') -Force
+foreach ($name in @('rexruntime.dll','rexgpu-xenos.dll')) { Copy-Item -LiteralPath (Join-Path $backendRuntime $name) -Destination (Join-Path $stage 'sdk\bin') -Force }
 # Package both graphics backends validated with FIFA Street.
 $backendRoot = Join-Path $stage 'sdk\backends'
 $d3d12Package = Join-Path $backendRoot 'D3D12'
@@ -45,21 +53,16 @@ $vulkanPackage = Join-Path $backendRoot 'Vulkan'
 New-Item -ItemType Directory -Path $d3d12Package -Force | Out-Null
 New-Item -ItemType Directory -Path $vulkanPackage -Force | Out-Null
 
-$d3d12 = Join-Path $projectRoot 'ReXGlue\out\win-amd64-d3d12\Release'
-$vulkan = Join-Path $projectRoot 'ReXGlue\out\win-amd64-vulkan\Release'
-
-$expectedBackends = @{
-    'D3D12' = @{
-        Source = $d3d12
-        Destination = $d3d12Package
-        RuntimeHash = '790B6B1B13765249160E53DCE6F28AF0F03B66D5D1AEDB1054949C50B13F04E8'
-        GpuHash = '461A88F1D27C605106453B0F3C92BD72BD4BC166DCDC0BBF01E825BCEFB8418D'
-    }
-    'Vulkan' = @{
-        Source = $vulkan
-        Destination = $vulkanPackage
-        RuntimeHash = '115722CC5905D07FC6A6212B47692FFE6405DD1BA9F87CDA97F8DA2C25E4767A'
-        GpuHash = '71FA61D82FF6134F1F407D682ACEBAC01F2B3B2DCEFCC34151A0C082B746BDD2'
+$vulkan = Join-Path $ReXGlueRoot $backendInputs.backends.Vulkan.source
+$expectedBackends = @{}
+foreach ($backendName in @('D3D12', 'Vulkan')) {
+    $inputBackend = $backendInputs.backends.$backendName
+    if (!$inputBackend -or $inputBackend.runtimeHash -notmatch '^[a-fA-F0-9]{64}$' -or $inputBackend.gpuHash -notmatch '^[a-fA-F0-9]{64}$') { throw "Invalid backend integrity manifest: $backendName" }
+    $expectedBackends[$backendName] = @{
+        Source = Join-Path $ReXGlueRoot $inputBackend.source
+        Destination = Join-Path $backendRoot $backendName
+        RuntimeHash = $inputBackend.runtimeHash
+        GpuHash = $inputBackend.gpuHash
     }
 }
 
@@ -79,8 +82,8 @@ foreach ($backendName in @('D3D12', 'Vulkan')) {
     $runtimeFile = Join-Path $backend.Destination 'rexruntime.dll'
     $gpuFile = Join-Path $backend.Destination 'rexgpu-xenos.dll'
 
-    $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeFile).Hash
-    $gpuHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $gpuFile).Hash
+    $runtimeHash = (Get-InputSha256 $runtimeFile)
+    $gpuHash = (Get-InputSha256 $gpuFile)
 
     if ($runtimeHash -ne $backend.RuntimeHash) {
         throw "$backendName rexruntime.dll hash mismatch. Expected $($backend.RuntimeHash), got $runtimeHash"
@@ -96,7 +99,7 @@ foreach ($backendName in @('D3D12', 'Vulkan')) {
 foreach ($name in @('rexruntime.lib','rexgpu-xenos.lib')) {
     Copy-Item -LiteralPath (Join-Path $vulkan $name) -Destination (Join-Path $stage 'sdk\lib') -Force
 }
-Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\include\rex') -Destination (Join-Path $stage 'sdk\include') -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $ReXGlueRoot 'include\rex') -Destination (Join-Path $stage 'sdk\include') -Recurse -Force
 Get-ChildItem -LiteralPath (Join-Path $stage 'sdk\bin') -Filter 'rexglue.before*' | Remove-Item
 New-Item -ItemType Directory -Path (Join-Path $stage 'compiler\bin') -Force | Out-Null
 foreach ($name in @('clang.exe','clang++.exe','lld-link.exe','llvm-rc.exe','llvm-mt.exe')) { Copy-Item -LiteralPath (Join-Path $LLVMRoot "bin\$name") -Destination (Join-Path $stage 'compiler\bin') }
@@ -108,9 +111,9 @@ Copy-Item -LiteralPath $NinjaPath -Destination (Join-Path $stage 'compiler\bin')
 New-Item -ItemType Directory -Path (Join-Path $stage 'licenses') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot 'licenses\bundled-tools') -Destination (Join-Path $stage 'licenses\bundled-tools') -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'FifaStreetSetupTool\ThirdParty\MonoGame-LICENSE.txt') -Destination (Join-Path $stage 'licenses\MonoGame-LZX-MS-PL.txt')
-Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\LICENSE') -Destination (Join-Path $stage 'licenses\ReXGlue.txt')
+Copy-Item -LiteralPath (Join-Path $ReXGlueRoot 'LICENSE') -Destination (Join-Path $stage 'licenses\ReXGlue.txt')
 Copy-Item -LiteralPath (Join-Path $CMakeRoot 'doc\cmake\LICENSE.rst') -Destination (Join-Path $stage 'licenses\CMake.rst')
-$thirdPartyRoot = Join-Path $projectRoot 'ReXGlue\thirdparty'
+$thirdPartyRoot = Join-Path $ReXGlueRoot 'thirdparty'
 Get-ChildItem -LiteralPath $thirdPartyRoot -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|NOTICE|COPYRIGHT)(\..*)?$' } | ForEach-Object {
     $relative = $_.FullName.Substring($thirdPartyRoot.Length + 1)
     $target = Join-Path (Join-Path $stage 'licenses\ReXGlue-thirdparty') $relative
