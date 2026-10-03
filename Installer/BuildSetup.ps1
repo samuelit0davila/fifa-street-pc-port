@@ -28,7 +28,7 @@ New-Item -ItemType Directory -Path (Join-Path $stage 'tools') | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'tools\extract-xiso.exe') -Destination (Join-Path $stage 'tools')
 New-Item -ItemType Directory -Path (Join-Path $stage 'payload\Game') -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $root 'payload\Game\fifastreet.toml') -Destination (Join-Path $stage 'payload\Game')
-dotnet publish (Join-Path $projectRoot 'Launcher\FifaStreetLauncher\FifaStreetLauncher.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o (Join-Path $stage 'payload')
+dotnet publish (Join-Path $projectRoot 'Launcher\FifaStreetLauncher\FifaStreetLauncher.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:RuntimeFrameworkVersion=8.0.31 -o (Join-Path $stage 'payload')
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar o launcher.' }
 Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter '*.pdb' | Remove-Item
 
@@ -125,7 +125,7 @@ $bundle = Join-Path $root 'FifaStreetSetupTool\bundle.zip'
 if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle }
 [IO.Compression.ZipFile]::CreateFromDirectory($stage, $bundle, [IO.Compression.CompressionLevel]::Optimal, $false)
 $publish = Join-Path $stage 'published'
-dotnet publish (Join-Path $root 'FifaStreetSetupTool\FifaStreetSetupTool.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o $publish
+dotnet publish (Join-Path $root 'FifaStreetSetupTool\FifaStreetSetupTool.csproj') -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:RuntimeFrameworkVersion=8.0.31 -o $publish
 if ($LASTEXITCODE -ne 0) { throw 'Falha ao publicar instalador.' }
 $Output = [IO.Path]::GetFullPath($Output)
 New-Item -ItemType Directory -Path (Split-Path $Output -Parent) -Force | Out-Null
