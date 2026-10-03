@@ -86,7 +86,7 @@ A clean end-to-end installation from an original Xbox 360 ISO has been completed
 
 I've recorded gameplay from my PC build.
 
-<a href="https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/download/v0.1.0-experimental/unknown_2026.10.01-16.18_1.mp4">
+<a href="https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.1.0-experimental/downloads/gameplay/unknown_2026.10.01-16.18_1.mp4">
   <img src="docs/images/gameplay.png" alt="Download my FIFA Street PC gameplay video" width="1000">
 </a>
 
