@@ -24,6 +24,10 @@ The installer uses your own Xbox 360 ISO to extract the game files, apply my men
 
 The latest experimental release is available from the [release page](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases).
 
+**Current download:** [FifaStreetSetup.exe — v0.3.0 Experimental](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.3.0-experimental/downloads/installers/FifaStreetSetup.exe) · [SHA-256](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.3.0-experimental/downloads/installers/FifaStreetSetup.exe.sha256) · [Third-party notices](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.3.0-experimental/downloads/notices/Third-party-notices-v0.3.0.zip)
+
+The migrated installer is the unchanged, previously tested local v0.3.0 release. Older release pages preserve their source tags; installers for v0.1.0 and v0.2.0 have not been positively recovered. The GitLab validation job checks source syntax; a complete Windows rebuild is a separate manual job.
+
 **You'll need:** Windows x64, your own Xbox 360 FIFA Street ISO, a compatible Direct3D 12 or Vulkan GPU and at least 12 GB free on the destination drive, plus extra space for temporary and build files.
 
 1. Run **FifaStreetSetup.exe**.

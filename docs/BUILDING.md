@@ -74,7 +74,7 @@ It activates the selected pair beside `fifastreet.exe` before starting the game.
 
 The source images and icon are tracked. Compiled SDK tools, `extract-xiso.exe`, compiler binaries and `bundle.zip` remain local and excluded from Git.
 
-    ./Installer/BuildSetup.ps1 -Output "C:\Users\Samuel M\Desktop\FIFASTREET - 2012\Installer/dist/FifaStreetSetup.exe"
+    ./Installer/BuildSetup.ps1 -Output "$PWD/dist/FifaStreetSetup.exe"
 
 The packaging script creates the public-tool bundle, publishes the launcher and publishes the self-contained installer.
 
@@ -121,4 +121,4 @@ For a release, verify:
 - public-package game-file exclusion;
 - ReXGlue patch application against the recorded base.
 
-Upload the installer as a Release asset; commit source, documentation, screenshots and notices. See [GitHub presentation](GITHUB-PRESENTATION.md).
+Upload the installer as a Release asset; commit source, documentation, screenshots and notices. See [GitLab build and migration instructions](GITLAB.md).

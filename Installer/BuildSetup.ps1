@@ -106,6 +106,7 @@ foreach ($name in @('cmake.exe','cmcldeps.exe')) { Copy-Item -LiteralPath (Join-
 Copy-Item -LiteralPath (Join-Path $CMakeRoot 'share') -Destination (Join-Path $stage 'compiler\share') -Recurse
 Copy-Item -LiteralPath $NinjaPath -Destination (Join-Path $stage 'compiler\bin')
 New-Item -ItemType Directory -Path (Join-Path $stage 'licenses') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $projectRoot 'licenses\bundled-tools') -Destination (Join-Path $stage 'licenses\bundled-tools') -Recurse
 Copy-Item -LiteralPath (Join-Path $root 'FifaStreetSetupTool\ThirdParty\MonoGame-LICENSE.txt') -Destination (Join-Path $stage 'licenses\MonoGame-LZX-MS-PL.txt')
 Copy-Item -LiteralPath (Join-Path $projectRoot 'ReXGlue\LICENSE') -Destination (Join-Path $stage 'licenses\ReXGlue.txt')
 Copy-Item -LiteralPath (Join-Path $CMakeRoot 'doc\cmake\LICENSE.rst') -Destination (Join-Path $stage 'licenses\CMake.rst')

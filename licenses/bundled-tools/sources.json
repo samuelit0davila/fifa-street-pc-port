@@ -1,0 +1,42 @@
+[
+  {
+    "name": "LLVM-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/llvm/llvm-project/85ac560262434c9ccfc0c183ec22d4138ed647fb/llvm/LICENSE.TXT"
+  },
+  {
+    "name": "Ninja-COPYING.txt",
+    "source": "https://raw.githubusercontent.com/ninja-build/ninja/v1.13.2/COPYING"
+  },
+  {
+    "name": "extract-xiso-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/XboxDev/extract-xiso/build-202609111233/LICENSE.TXT"
+  },
+  {
+    "name": "dotnet-runtime-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/runtime/v8.0.31/LICENSE.TXT"
+  },
+  {
+    "name": "dotnet-runtime-THIRD-PARTY-NOTICES.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/runtime/v8.0.31/THIRD-PARTY-NOTICES.TXT"
+  },
+  {
+    "name": "dotnet-windowsdesktop-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/windowsdesktop/v8.0.31/LICENSE"
+  },
+  {
+    "name": "dotnet-wpf-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/wpf/v8.0.31/LICENSE.TXT"
+  },
+  {
+    "name": "dotnet-wpf-THIRD-PARTY-NOTICES.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/wpf/v8.0.31/THIRD-PARTY-NOTICES.TXT"
+  },
+  {
+    "name": "dotnet-winforms-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/winforms/v8.0.31/LICENSE.TXT"
+  },
+  {
+    "name": "dotnet-winforms-THIRD-PARTY-NOTICES.txt",
+    "source": "https://raw.githubusercontent.com/dotnet/winforms/v8.0.31/THIRD-PARTY-NOTICES.TXT"
+  }
+]
