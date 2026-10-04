@@ -1,8 +1,95 @@
-﻿# Building from source
+# Building from source
 
 The usual player workflow uses the release installer and a personal ISO. These instructions describe development and packaging. They do not include game data or generated guest code.
 
 ## Developer prerequisites
+
+For a development build, follow **Source build walkthrough** below. This builds
+Direct3D 12 from source and does not need the release backend DLLs or their hashes.
+Installer packaging is a separate release-maintainer workflow.
+
+## Source build walkthrough
+
+Use Windows x64 and a short repository path, for example `C:\src\fifa-street-pc`.
+Install Git, .NET 8 SDK, Visual Studio C++ Build Tools with Windows SDK,
+LLVM/Clang 18 or newer, CMake 3.25 or newer and Ninja. Open **Developer PowerShell
+for VS** with the x64 toolchain, and run all commands from the repository root.
+LLVM is expected at `C:\Program Files\LLVM`; CMake and Ninja must be on PATH.
+
+If you have not cloned the project yet:
+
+```powershell
+git clone https://gitlab.com/samuelitodavila-group/fifa-street-pc.git
+Set-Location fifa-street-pc
+```
+
+1. Prepare ReXGlue using the pinned revision and patch in **Prepare ReXGlue** below.
+   Apply the patch once to a fresh checkout; do not apply it again on later builds.
+2. Build the code generator and SDK with Direct3D 12 explicitly selected:
+
+   ```powershell
+   $env:PATH = "C:\Program Files\LLVM\bin;$env:PATH"
+   cmake -S ReXGlue --preset win-amd64 -DREXGLUE_USE_D3D12=ON -DREXGLUE_USE_VULKAN=OFF
+   cmake --build ReXGlue/out/build/win-amd64 --config Release --parallel 2
+   ```
+
+3. Place `extract-xiso.exe` in `Installer/tools/`. Extract your ISO into
+   `dist/GameData` (replace the ISO path):
+
+   ```powershell
+   New-Item -ItemType Directory -Path dist -Force
+   .\Installer\tools\extract-xiso.exe -x -d "$PWD\dist\GameData" "D:\Games\FIFA Street.iso"
+   ```
+
+   Stop if extraction fails. `dist/GameData` must contain `default.xex`,
+   `fifadllzf.xex.dll`, and
+   `dlc/dlc_FootballCompEng/dlc/FootballCompEng/FootballCompEngzf.xex.dll`.
+   An existing extracted folder with these files can be used instead.
+
+4. Generate and compile the game and its two guest modules:
+
+   ```powershell
+   $env:REXSDK_DIR = (Resolve-Path .\ReXGlue).Path
+   .\Installer\BuildFifaStreet.ps1 -SourceBuild -GameData "$PWD\dist\GameData" -Output "$PWD\dist\Game" -Jobs 2
+   ```
+
+   The script also builds and installs its own Direct3D 12 runtime/GPU pair and
+   runtime dependencies. No `Installer/sdk` bundle is needed. It prints the
+   build workspace and full diagnostic log paths. Keep that workspace to resume
+   with `-Workspace` after fixing a compilation error. `-Jobs 2` limits memory
+   pressure; increase it only if sufficient RAM is available.
+
+5. Build the launcher and copy the default game configuration:
+
+   ```powershell
+   dotnet publish Launcher/FifaStreetLauncher/FifaStreetLauncher.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist
+   Copy-Item Installer/payload/Game/fifastreet.toml dist/Game/fifastreet.toml
+   .\dist\FifaStreetLauncher.exe
+   ```
+
+   Select **Direct3D 12** and press **PLAY**. The output layout is `dist/Game`,
+   `dist/GameData`, and the launcher in `dist`. This source workflow installs
+   Direct3D 12 by default. To also build Vulkan, repeat step 4 with
+   `-GraphicsApi Vulkan` and the same output directory. Use a new workspace for
+   each graphics API; both backend folders remain available to the launcher.
+   Vulkan adds the SDK's Vulkan dependencies and build requirements. Select the
+   backend you built in the launcher. This workflow does not apply the graphical
+   installer's menu-credit patch.
+
+Troubleshooting:
+
+- `clang.exe not found`: install LLVM in the path above.
+- `ReXGlue code generator not found`: complete step 2; the script checks both
+  `ReXGlue/out/win-amd64/Release/rexglue.exe` and the single-config output path.
+- Windows SDK/linker errors: use the x64 Visual Studio developer terminal.
+- Missing original module: check the extracted directory structure, including DLC.
+- Backend hash mismatch: use `-SourceBuild`; release-bundle validation deliberately
+  retains the official hash checks.
+
+Run the backend installation regression check with:
+`pwsh -NoProfile -File Installer/TestSourceBackend.ps1`.
+
+## Release packaging prerequisites
 
 - Windows x64, Git and the .NET 8 SDK with Windows desktop support.
 - Microsoft C++ Build Tools and Windows SDK, available through a developer terminal.

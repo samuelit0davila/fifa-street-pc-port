@@ -16,6 +16,9 @@
 
 ## About
 
+To compile the game yourself, follow the [source build walkthrough](docs/BUILDING.md#source-build-walkthrough).
+It uses your extracted ISO and builds its own Direct3D 12 runtime; no release SDK bundle is required.
+
 ## v0.4.0 Experimental
 
 The v0.4.0 installer includes precompiled game binaries for faster installation, updates that preserve saves and preferences, and English, Spanish, French, German and Italian selection in the launcher. See [the changelog](CHANGELOG.md) and [credits](CREDITS.md).

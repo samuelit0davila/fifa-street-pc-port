@@ -7,6 +7,11 @@ param(
 
     [string]$Workspace,
 
+    [switch]$SourceBuild,
+
+    [ValidateSet('D3D12', 'Vulkan')]
+    [string]$GraphicsApi = 'D3D12',
+
     [ValidateRange(1, 64)]
     [int]$Jobs = 2
 )
@@ -41,12 +46,12 @@ $installerRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $template = Join-Path $installerRoot "recomp-template"
 
 $rexGlueSource = if ($env:REXSDK_DIR) { [IO.Path]::GetFullPath($env:REXSDK_DIR) } else {
-    "C:\Users\Samuel M\Desktop\FIFASTREET - 2012\ReXGlue"
+    Join-Path (Split-Path $installerRoot -Parent) "ReXGlue"
 }
 
 $bundledSdk = Join-Path $installerRoot 'sdk'
 $bundledTools = Join-Path $installerRoot 'compiler'
-$useBundledSdk = Test-Path -LiteralPath (Join-Path $bundledSdk 'bin\rexglue.exe')
+$useBundledSdk = !$SourceBuild -and (Test-Path -LiteralPath (Join-Path $bundledSdk 'bin\rexglue.exe'))
 $llvmBin = if (Test-Path -LiteralPath $bundledTools) { Join-Path $bundledTools 'bin' } else { "C:\Program Files\LLVM\bin" }
 
 $clang = Join-Path $llvmBin "clang.exe"
@@ -202,7 +207,8 @@ Push-Location $workProject
 try {
 
     # Generate sources before configuration so CMake discovers both binaries.
-    $codegen = if ($useBundledSdk) { Join-Path $bundledSdk 'bin\rexglue.exe' } else { Join-Path $rexGlueSource 'out\win-amd64\rexglue.exe' }
+    $codegen = if ($useBundledSdk) { Join-Path $bundledSdk 'bin\rexglue.exe' } else { Join-Path $rexGlueSource 'out\win-amd64\Release\rexglue.exe' }
+    if (!$useBundledSdk -and !(Test-Path -LiteralPath $codegen)) { $codegen = Join-Path $rexGlueSource 'out\win-amd64\rexglue.exe' }
     if (!(Test-Path -LiteralPath $codegen)) { throw "ReXGlue code generator not found: $codegen" }
     $fingerprintPath = Join-Path $workProject 'codegen-inputs.sha256'
     $fingerprintInputs = @($manifestPath, $codegen)
@@ -218,7 +224,10 @@ try {
         [IO.File]::WriteAllText($fingerprintPath, $fingerprint, [Text.UTF8Encoding]::new($false))
     }
 
-    $sdkArguments = if ($useBundledSdk) { @('-DREXSDK_DIR=', "-DCMAKE_PREFIX_PATH=$bundledSdk") } else { @("-DREXSDK_DIR=$rexGlueSource") }
+    $sdkArguments = if ($useBundledSdk) { @('-DREXSDK_DIR=', "-DCMAKE_PREFIX_PATH=$bundledSdk") } else {
+        @("-DREXSDK_DIR=$rexGlueSource", "-DREXGLUE_USE_D3D12=$($GraphicsApi -eq 'D3D12')", "-DREXGLUE_USE_VULKAN=$($GraphicsApi -eq 'Vulkan')",
+          "-DREXGLUE_OUTPUT_DIRECTORY=$workProject/out/build/win-amd64-release/runtime")
+    }
     Invoke-BuildTool 'cmake' (@('--preset', 'win-amd64-release') + $sdkArguments + @(
         "-DCMAKE_C_COMPILER=$clang",
         "-DCMAKE_CXX_COMPILER=$clangxx", '-DCMAKE_C_FLAGS=-mssse3', '-DCMAKE_CXX_FLAGS=-mssse3')
@@ -268,6 +277,15 @@ Copy-Item $exe $Output -Force
 Get-ChildItem -LiteralPath $buildFolder -Filter '*.dll' -File |
     Where-Object { $_.Name -notin @('rexruntime.dll', 'rexgpu-xenos.dll') } |
     Copy-Item -Destination $Output -Force
+
+# Source builds use the paired runtime/GPU DLLs compiled by this invocation.
+if (!$useBundledSdk) {
+    . (Join-Path $installerRoot 'InstallSourceBackend.ps1')
+    Install-SourceBackend -RuntimeDirectory (Join-Path $buildFolder 'runtime') -Output $Output -GraphicsApi $GraphicsApi
+    Stop-Transcript | Out-Null
+    Write-Host "Source build complete: $Output ($GraphicsApi)"
+    return
+}
 
 # Install both validated graphics backends.
 $bundledBackends = Join-Path $bundledSdk 'backends'
