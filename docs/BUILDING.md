@@ -78,6 +78,10 @@ Set-Location fifa-street-pc
 
 Troubleshooting:
 
+- The first build can take tens of minutes. ReXGlue analyses the main game module
+  before compilation, and CMake may repeat code generation when building its SDK
+  tool for the first time. Keep the process running while it is making progress.
+
 - `clang.exe not found`: install LLVM in the path above.
 - `ReXGlue code generator not found`: complete step 2; the script checks both
   `ReXGlue/out/win-amd64/Release/rexglue.exe` and the single-config output path.
@@ -88,6 +92,14 @@ Troubleshooting:
 
 Run the backend installation regression check with:
 `powershell -NoProfile -File Installer/TestSourceBackend.ps1`.
+
+Validation on 2026-10-04: the Windows x64 Direct3D 12 source workflow completed
+code generation, SDK/game compilation and installation of the executable, both
+guest modules and paired runtime/GPU dependencies. The launcher and source
+installer package also compiled successfully. This records a development-machine
+build, not a clean Windows installation or new gameplay validation. The Vulkan
+installation helper is tested; a complete Vulkan source build has not been tested
+in this run.
 
 ## Release packaging prerequisites
 
