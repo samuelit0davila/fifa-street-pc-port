@@ -7,3 +7,4 @@ foreach ($file in $files) {
     if ($parseErrors) { throw "$($file.Name): $($parseErrors.Message -join '; ')" }
 }
 Write-Host "PowerShell syntax verified for $($files.Count) source files."
+& (Join-Path $PSScriptRoot '../Installer/TestSourceBackend.ps1')

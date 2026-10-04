@@ -305,6 +305,17 @@ $expectedBackends = @{
 }
 
 foreach ($backendName in @('D3D12', 'Vulkan')) {
+    # New bundles carry the exact backend manifest verified during packaging.
+    # Retain the legacy constants above for historical v0.3 bundles.
+    $backendManifestPath = Join-Path $installerRoot 'backend-manifest.json'
+    if (Test-Path -LiteralPath $backendManifestPath) {
+        $backendManifest = Get-Content -LiteralPath $backendManifestPath -Raw | ConvertFrom-Json
+        $entry = $backendManifest.backends.$backendName
+        if (!$entry -or $entry.runtimeHash -notmatch '^[a-fA-F0-9]{64}$' -or $entry.gpuHash -notmatch '^[a-fA-F0-9]{64}$') {
+            throw "Invalid backend integrity manifest: $backendName"
+        }
+        $expectedBackends[$backendName] = @{ RuntimeHash = $entry.runtimeHash; GpuHash = $entry.gpuHash }
+    }
     $sourceBackend = Join-Path $bundledBackends $backendName
     $destinationBackend = Join-Path $outputBackends $backendName
 
@@ -319,8 +330,8 @@ foreach ($backendName in @('D3D12', 'Vulkan')) {
         throw "$backendName rexgpu-xenos.dll was not found: $sourceGpu"
     }
 
-    $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceRuntime).Hash
-    $gpuHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourceGpu).Hash
+    $runtimeHash = Get-InputSha256 $sourceRuntime
+    $gpuHash = Get-InputSha256 $sourceGpu
 
     if ($runtimeHash -ne $expectedBackends[$backendName].RuntimeHash) {
         throw "$backendName rexruntime.dll is not the validated runtime."

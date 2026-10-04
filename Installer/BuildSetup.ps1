@@ -23,6 +23,7 @@ $stage = Join-Path $env:TEMP ('FifaStreetPackage_' + [guid]::NewGuid().ToString(
 $utf8 = [Text.UTF8Encoding]::new($false)
 New-Item -ItemType Directory -Path $stage | Out-Null
 foreach ($name in @('BuildFifaStreet.ps1', 'BuildIntegrity.ps1', 'README.md')) { Copy-Item -LiteralPath (Join-Path $root $name) -Destination $stage }
+Copy-Item -LiteralPath $BackendManifest -Destination (Join-Path $stage 'backend-manifest.json')
 $template = Join-Path $stage 'recomp-template'
 foreach ($name in @('', 'config', 'src', 'generated')) { New-Item -ItemType Directory -Path (Join-Path $template $name) -Force | Out-Null }
 foreach ($name in @('CMakeLists.txt','CMakePresets.json','fifastreet_manifest.toml','config\fifadllzf_overrides.toml','config\footballcompeng_overrides.toml','src\main.cpp','src\fifastreet_app.h','src\stubs.cpp','generated\rexglue.cmake')) {

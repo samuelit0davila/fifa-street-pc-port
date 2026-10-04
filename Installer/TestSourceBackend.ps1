@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'InstallSourceBackend.ps1')
 . (Join-Path $PSScriptRoot 'BuildIntegrity.ps1')
-$testRoot = Join-Path $env:TEMP ('FifaSourceBackendTest_' + [guid]::NewGuid().ToString('N'))
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('FifaSourceBackendTest_' + [guid]::NewGuid().ToString('N'))
 $runtime = Join-Path $testRoot 'runtime'
 $output = Join-Path $testRoot 'output'
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
