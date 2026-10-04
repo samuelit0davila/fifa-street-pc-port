@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'InstallSourceBackend.ps1')
+. (Join-Path $PSScriptRoot 'BuildIntegrity.ps1')
 $testRoot = Join-Path $env:TEMP ('FifaSourceBackendTest_' + [guid]::NewGuid().ToString('N'))
 $runtime = Join-Path $testRoot 'runtime'
 $output = Join-Path $testRoot 'output'
@@ -14,7 +15,7 @@ foreach ($name in @('rexgpu-xenos.dll', 'TracyClient.dll')) {
 Install-SourceBackend -RuntimeDirectory $runtime -Output $output
 foreach ($name in @('rexruntime.dll', 'rexgpu-xenos.dll', 'TracyClient.dll')) {
     foreach ($destination in @($output, (Join-Path $output 'Backends\D3D12'))) {
-        if ((Get-FileHash (Join-Path $runtime $name)).Hash -ne (Get-FileHash (Join-Path $destination $name)).Hash) {
+        if ((Get-InputSha256 (Join-Path $runtime $name)) -ne (Get-InputSha256 (Join-Path $destination $name))) {
             throw "Source backend copy differs: $name"
         }
     }

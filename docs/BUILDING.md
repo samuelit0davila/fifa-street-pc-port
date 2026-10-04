@@ -87,7 +87,7 @@ Troubleshooting:
   retains the official hash checks.
 
 Run the backend installation regression check with:
-`pwsh -NoProfile -File Installer/TestSourceBackend.ps1`.
+`powershell -NoProfile -File Installer/TestSourceBackend.ps1`.
 
 ## Release packaging prerequisites
 
