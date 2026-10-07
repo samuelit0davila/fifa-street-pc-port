@@ -8,7 +8,7 @@
 
 ### PORTED BY: SAMUELITODAVILA
 
-[Downloads](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases) · [Report a bug](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/issues) · [Build from source](docs/BUILDING.md)
+[Downloads](https://github.com/samuelit0davila/fifa-street-pc-port/releases) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
 
 <img src="docs/images/start-screen.png" alt="FIFA Street running on PC" width="1000">
 
@@ -23,7 +23,7 @@ It uses your extracted ISO and builds its own Direct3D 12 runtime; no release SD
 
 The v0.4.1 installer updates the launcher and installer of v0.4.0 (same precompiled game binaries): a new **Readback Resolve** option in the Compatibility panel, lighter first-run defaults for better performance (1x internal resolution, FXAA, MSAA off), optional frame-stats logging and a few robustness fixes. Full readback remains the default and the only validated mode. v0.4.0 introduced precompiled game binaries for faster installation, updates that preserve saves and preferences, and English, Spanish, French, German and Italian selection in the launcher. See [the changelog](CHANGELOG.md) and [credits](CREDITS.md).
 
-**Latest download:** [FifaStreetSetup.exe — v0.4.1 Experimental](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.1-experimental/FifaStreetSetup.exe) · [SHA-256](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.1-experimental/FifaStreetSetup.exe.sha256) · [Release page](https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v0.4.1-experimental) · [Third-party notices (v0.4.0, unchanged components)](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/notices/Third-party-notices-v0.4.0.zip) · [Previous release: v0.4.0](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental)
+**Latest download:** [FifaStreetSetup.exe — v0.4.1 Experimental](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.1-experimental/FifaStreetSetup.exe) · [SHA-256](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.1-experimental/FifaStreetSetup.exe.sha256) · [Release page](https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v0.4.1-experimental) · [Third-party notices (unchanged since v0.4.0)](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.0-experimental/Third-party-notices-v0.4.0.zip) · [Previous release: v0.4.0](https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v0.4.0-experimental)
 
 For a new installation, provide your own ISO. To update, select your existing installation folder containing `Game` and `GameData`; no ISO extraction is needed. Only builds matching the three verified original module hashes are accepted. A shared title ID or a PAL/NTSC label alone does not establish compatibility.
 
@@ -35,7 +35,7 @@ The v0.3.0 source installer uses your own Xbox 360 ISO to extract the game files
 
 ## Download and install
 
-The latest experimental release is available from the [release page](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases).
+The latest experimental release is available from the [release page](https://github.com/samuelit0davila/fifa-street-pc-port/releases).
 
 **Current download:** [FifaStreetSetup.exe — v0.3.0 Experimental](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.3.0-experimental/downloads/installers/FifaStreetSetup.exe) · [SHA-256](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.3.0-experimental/downloads/installers/FifaStreetSetup.exe.sha256) · [Third-party notices](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.3.0-experimental/downloads/notices/Third-party-notices-v0.3.0.zip)
 
@@ -117,7 +117,7 @@ This remains an experimental port. Performance depends on hardware, drivers, out
 
 See [known issues and validation](docs/STATUS.md) for the current validation scope.
 
-If you encounter a problem, [open an issue](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/issues) with your hardware, Windows and driver versions, selected graphics API/settings and relevant logs. Please don't upload ISOs or game files.
+If you encounter a problem, [open an issue](https://github.com/samuelit0davila/fifa-street-pc-port/issues) with your hardware, Windows and driver versions, selected graphics API/settings and relevant logs. Please don't upload ISOs or game files.
 
 ## Credits and licence
 
