@@ -16,7 +16,7 @@ Last updated: **2 October 2026**. The project remains experimental. v0.3.0 has c
 | Direct3D 12 backend | **Passed** | Packaged backend launched successfully from the final clean installation |
 | Vulkan backend | **Passed** | Packaged backend launched successfully from the final clean installation |
 | Backend switching | **Passed** | Launcher selected the requested backend and activated the corresponding validated runtime/GPU DLL pair |
-| Resolve readback | **Passed in current configuration** | Full resolve readback is fixed by the launcher |
+| Resolve readback | **Passed in current configuration** | Full resolve readback is the launcher default |
 | Output/internal resolution separation | **Passed** | 2560x1440 output with 1x and 2x internal settings exercised independently |
 | Launcher | **Passed** | Graphics API selection, backend activation and launch tested |
 | ReXGlue project patch | **Passed** | Patch `--check` and application succeeded against clean ReXGlue `c94f5eb` |
@@ -80,7 +80,7 @@ The installer verifies these hashes before packaging/installing the backends.
 
 ## Renderer configuration
 
-Full resolve readback is the validated configuration and is fixed by the launcher.
+Full resolve readback is the validated configuration and the launcher default. It can be changed in the launcher (Compatibility > Readback Resolve); other modes are not validated.
 
 For Direct3D 12, the validated configuration uses ReXGlue's automatic render-target-path selection.
 

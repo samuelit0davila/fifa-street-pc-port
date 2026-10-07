@@ -32,6 +32,8 @@ public class LauncherForm : Form
     private readonly ComboBox postEffectBox = new();
     private readonly ComboBox internalResolutionBox = new();
     private readonly ComboBox gameLanguageBox = new();
+    private readonly ComboBox readbackResolveBox = new();
+    private static readonly string[] ReadbackResolveModes = { "full", "some", "fast", "none" };
     private static readonly int[] GameLanguageIds = { 1, 5, 4, 3, 6 };
 
     private readonly CheckBox vsyncBox = new();
@@ -42,6 +44,7 @@ public class LauncherForm : Form
     private readonly CheckBox clearMemoryPageStateBox = new();
     private readonly CheckBox occlusionQueryBox = new();
     private readonly CheckBox asyncShadersBox = new();
+    private readonly CheckBox logFrameStatsBox = new();
 
     private readonly TextBox gamePathBox = new();
     private readonly TextBox exePathBox = new();
@@ -421,9 +424,17 @@ var fpsInfo = new Label
         compatibilityPanel.Controls.Add(occlusionQueryBox);
         compatibilityPanel.Controls.Add(asyncShadersBox);
 
+        ConfigureCheck(logFrameStatsBox, "Frame stats log", 615, 112);
+        compatibilityPanel.Controls.Add(logFrameStatsBox);
+
+        AddFieldLabel(compatibilityPanel, "Readback Resolve", 22, 52);
+        ConfigureCombo(readbackResolveBox, 22, 76, 210);
+        readbackResolveBox.AccessibleName = "Readback Resolve";
+        compatibilityPanel.Controls.Add(readbackResolveBox);
+
         var hint = new Label
         {
-            Text = "Readback Resolve is fixed to Full for FIFA Street compatibility.",
+            Text = "Readback Resolve: Full is the validated mode. Some and Fast give more FPS but may cause graphical corruption.",
             ForeColor = TextSecondary,
             Font = new Font("Segoe UI", 8.5F),
             AutoSize = true,
@@ -451,7 +462,14 @@ var fpsInfo = new Label
         };
 
         resolutionBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateSummary(); };
-internalResolutionBox.SelectedIndexChanged += (_, _) => UpdateSummary();
+internalResolutionBox.SelectedIndexChanged += (_, _) =>
+{
+    UpdateSummary();
+    if (!gameRunning)
+        UpdateStatus(internalResolutionBox.SelectedIndex >= 2
+            ? "High internal resolution may reduce FPS"
+            : "Ready to play", true);
+};
 refreshBox.SelectedIndexChanged += (_, _) => UpdateSummary();
 gpuBox.SelectedIndexChanged += (_, _) => UpdateSummary();
 
@@ -660,6 +678,15 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         gameLanguageBox.Items.AddRange(new object[] { "English", "Español", "Français", "Deutsch", "Italiano" });
         gameLanguageBox.SelectedIndex = 0;
 
+        readbackResolveBox.Items.AddRange(new object[]
+        {
+            "Full (compatible)",
+            "Some (balanced)",
+            "Fast (more FPS, may glitch)",
+            "None (experimental)"
+        });
+        readbackResolveBox.SelectedIndex = 0;
+
         monitorBox.Items.Clear();
         foreach (var screen in Screen.AllScreens)
         {
@@ -681,7 +708,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
     "FXAA",
     "FXAA Extreme"
 });
-       postEffectBox.SelectedIndex = 2;
+       postEffectBox.SelectedIndex = 1;
 
        internalResolutionBox.Items.AddRange(new object[]
 {
@@ -690,18 +717,19 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
        "3x - 3840 x 2160",
        "4x - 5120 x 2880"
 });
-       internalResolutionBox.SelectedIndex = 1;
+       internalResolutionBox.SelectedIndex = 0;
 
 
         readbackMemexportBox.Checked = true;
         readbackMemexportFastBox.Checked = true;
-        clearMemoryPageStateBox.Checked = true;
+        clearMemoryPageStateBox.Checked = false;
+        logFrameStatsBox.Checked = false;
         occlusionQueryBox.Checked = true;
         asyncShadersBox.Checked = true;
 
         vsyncBox.Checked = false;
         vrrBox.Checked = true;
-        msaaBox.Checked = true;
+        msaaBox.Checked = false;
     }
 
     private void DetectGpus()
@@ -1199,7 +1227,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
             }
 
             // Compatibilidade / coerência GPU.
-            startInfo.Environment["REX_READBACK_RESOLVE"] = "full";
+            string readbackResolve = ReadbackResolveModes[Math.Clamp(readbackResolveBox.SelectedIndex, 0, ReadbackResolveModes.Length - 1)];
+            startInfo.Environment["REX_READBACK_RESOLVE"] = readbackResolve;
             // Keep synchronous Full Readback; reduce scheduler round trips for
             // short GPU work without reading before its fence is signalled.
             startInfo.Environment["REX_D3D12_READBACK_SHORT_WAIT"] = "true";
@@ -1222,7 +1251,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
             startInfo.Environment["REX_LOG_VERBOSE"] = "false";
             startInfo.Environment["REX_LOG_LEVEL"] = "info";
-            startInfo.Environment["REX_LOG_FRAME_STATS"] = "true";
+            startInfo.Environment["REX_LOG_FRAME_STATS"] = logFrameStatsBox.Checked ? "true" : "false";
             startInfo.Environment["REX_BIND_DEBUG_OVERLAY"] = "Home";
             startInfo.Environment["REX_LOG_FILE"] = logFile;
 
@@ -1252,7 +1281,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 $"MSAA={msaaBox.Checked}{Environment.NewLine}" +
                 $"PostEffect={postEffect}{Environment.NewLine}" +
                 $"Adapter={adapter}{Environment.NewLine}" +
-                $"ReadbackResolve=full (fixed){Environment.NewLine}" +
+                $"ReadbackResolve={readbackResolve}{Environment.NewLine}" +
                 $"ReadbackMemexport={readbackMemexportBox.Checked}{Environment.NewLine}" +
                 $"ReadbackMemexportFast={readbackMemexportBox.Checked && readbackMemexportFastBox.Checked}{Environment.NewLine}" +
                 $"ClearMemoryPageState={clearMemoryPageStateBox.Checked}{Environment.NewLine}" +
@@ -1458,6 +1487,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 GpuUsesDxgi = true,
                 PostEffect = postEffectBox.SelectedIndex,
                 InternalResolutionScale = internalResolutionBox.SelectedIndex,
+                ReadbackResolve = readbackResolveBox.SelectedIndex,
+                LogFrameStats = logFrameStatsBox.Checked,
                 ReadbackMemexport = readbackMemexportBox.Checked,
                 ReadbackMemexportFast = readbackMemexportFastBox.Checked,
                 ClearMemoryPageState = clearMemoryPageStateBox.Checked,
@@ -1546,6 +1577,10 @@ if (settings.InternalResolutionScale >= 0 &&
     internalResolutionBox.SelectedIndex = settings.InternalResolutionScale;
 }
 
+            if (settings.ReadbackResolve >= 0 &&
+                settings.ReadbackResolve < readbackResolveBox.Items.Count)
+                readbackResolveBox.SelectedIndex = settings.ReadbackResolve;
+            logFrameStatsBox.Checked = settings.LogFrameStats;
             readbackMemexportBox.Checked = settings.ReadbackMemexport;
             readbackMemexportFastBox.Checked = settings.ReadbackMemexportFast;
             clearMemoryPageStateBox.Checked = settings.ClearMemoryPageState;
@@ -1627,15 +1662,17 @@ public class LauncherSettings
     public int GameLanguage { get; set; } = 1;
     public int Gpu { get; set; }
     public bool GpuUsesDxgi { get; set; }
-    public int PostEffect { get; set; }
+    public int PostEffect { get; set; } = 1;
+    public int ReadbackResolve { get; set; } = 0;
+    public bool LogFrameStats { get; set; } = false;
     public int InternalResolutionScale { get; set; } = 0;
     public bool ReadbackMemexport { get; set; } = true;
     public bool ReadbackMemexportFast { get; set; } = true;
     public bool ClearMemoryPageState { get; set; } = false;
     public bool OcclusionQueries { get; set; } = true;
     public bool AsyncShaders { get; set; } = true;
-    public bool VSync { get; set; } = true;
-    public bool VRR { get; set; } = false;
+    public bool VSync { get; set; } = false;
+    public bool VRR { get; set; } = true;
     public bool MSAA { get; set; } = false;
 }
 
