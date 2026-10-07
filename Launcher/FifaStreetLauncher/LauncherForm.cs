@@ -1093,22 +1093,21 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
                 Path.Combine(executableDirectory, "rexgpu-xenos.dll"),
                 true);
 
-            if (string.IsNullOrWhiteSpace(resolutionBox.Text) ||
-                !resolutionBox.Text.Contains('x'))
+            var resolution = resolutionBox.Text.Split('x');
+            if (resolution.Length != 2 ||
+                !int.TryParse(resolution[0], out int width) ||
+                !int.TryParse(resolution[1], out int height) ||
+                width <= 0 || height <= 0)
             {
                 ShowError("Select a valid resolution.");
                 return;
             }
-
-            var resolution = resolutionBox.Text.Split('x');
-            int width = int.Parse(resolution[0]);
-            int height = int.Parse(resolution[1]);
             string refresh = refreshBox.Text;
 
             bool fullscreen =
                 displayModeBox.SelectedItem?.ToString() == "Fullscreen";
 
-            int monitor = Math.Max(0, monitorBox.SelectedIndex);
+            int monitor = Math.Clamp(monitorBox.SelectedIndex, 0, Screen.AllScreens.Length - 1);
 
             int adapter = gpuBox.SelectedIndex >= 0
                 ? gpuAdapterIndices[gpuBox.SelectedIndex] : -1;
@@ -1557,8 +1556,10 @@ if (settings.InternalResolutionScale >= 0 &&
             vrrBox.Checked = settings.VRR;
             msaaBox.Checked = settings.MSAA;
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
+            // Unreadable or corrupt settings fall back to the defaults.
+            Debug.WriteLine("Could not load launcher settings: " + ex.Message);
         }
     }
 

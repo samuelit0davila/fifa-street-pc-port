@@ -134,7 +134,10 @@ internal class InstallerEngine
             string payload = Path.Combine(installerRoot, "payload");
             if (!Directory.Exists(payload))
                 throw new Exception("The payload folder was not found.");
-            CopyDirectory(payload, installFolder);
+            // Keep the player's existing settings when installing over a previous copy.
+            string settingsFile = Path.Combine(installFolder, "Game", "fifastreet.toml");
+            CopyDirectory(payload, installFolder,
+                target => string.Equals(target, settingsFile, StringComparison.OrdinalIgnoreCase) && File.Exists(target));
 
             Console.WriteLine("Applying the start screen and main menu credits...");
             CreditPatch.Apply(gameDataFolder);
@@ -302,9 +305,10 @@ internal class InstallerEngine
         string directXex = Path.Combine(folder, "default.xex");
         if (File.Exists(directXex)) return folder;
 
-        foreach (string file in Directory.EnumerateFiles(folder, "default.xex", SearchOption.AllDirectories))
-            return Path.GetDirectoryName(file);
-        return null;
+        string[] matches = Directory.GetFiles(folder, "default.xex", SearchOption.AllDirectories);
+        if (matches.Length > 1)
+            throw new Exception("The ISO contains more than one default.xex; it may not be a supported FIFA Street image.");
+        return matches.Length == 1 ? Path.GetDirectoryName(matches[0]) : null;
     }
 
     static bool ValidateGame(string folder)
@@ -330,7 +334,7 @@ internal class InstallerEngine
         return true;
     }
 
-    static void CopyDirectory(string sourceDir, string destinationDir)
+    static void CopyDirectory(string sourceDir, string destinationDir, Func<string, bool>? skip = null)
     {
         CancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(destinationDir);
@@ -338,12 +342,14 @@ internal class InstallerEngine
         foreach (string file in Directory.GetFiles(sourceDir))
         {
             CancellationToken.ThrowIfCancellationRequested();
-            File.Copy(file, Path.Combine(destinationDir, Path.GetFileName(file)), overwrite: true);
+            string target = Path.Combine(destinationDir, Path.GetFileName(file));
+            if (skip?.Invoke(Path.GetFullPath(target)) == true) continue;
+            File.Copy(file, target, overwrite: true);
         }
 
         foreach (string directory in Directory.GetDirectories(sourceDir))
         {
-            CopyDirectory(directory, Path.Combine(destinationDir, Path.GetFileName(directory)));
+            CopyDirectory(directory, Path.Combine(destinationDir, Path.GetFileName(directory)), skip);
         }
     }
 }
