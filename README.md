@@ -19,15 +19,15 @@
 To compile the game yourself, follow the [source build walkthrough](docs/BUILDING.md#source-build-walkthrough).
 It uses your extracted ISO and builds its own Direct3D 12 runtime; no release SDK bundle is required.
 
-## v0.4.0 Experimental
+## v0.4.1 Experimental
 
-The v0.4.0 installer includes precompiled game binaries for faster installation, updates that preserve saves and preferences, and English, Spanish, French, German and Italian selection in the launcher. See [the changelog](CHANGELOG.md) and [credits](CREDITS.md).
+The v0.4.1 installer updates the launcher and installer of v0.4.0 (same precompiled game binaries): a new **Readback Resolve** option in the Compatibility panel, lighter first-run defaults for better performance (1x internal resolution, FXAA, MSAA off), optional frame-stats logging and a few robustness fixes. Full readback remains the default and the only validated mode. v0.4.0 introduced precompiled game binaries for faster installation, updates that preserve saves and preferences, and English, Spanish, French, German and Italian selection in the launcher. See [the changelog](CHANGELOG.md) and [credits](CREDITS.md).
 
-**Latest download:** [FifaStreetSetup.exe — v0.4.0 Experimental](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/installers/FifaStreetSetup.exe) · [SHA-256](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/installers/FifaStreetSetup.exe.sha256) · [Third-party notices](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/notices/Third-party-notices-v0.4.0.zip)
+**Latest download:** [FifaStreetSetup.exe — v0.4.1 Experimental](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.1-experimental/FifaStreetSetup.exe) · [SHA-256](https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v0.4.1-experimental/FifaStreetSetup.exe.sha256) · [Release page](https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v0.4.1-experimental) · [Third-party notices (v0.4.0, unchanged components)](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental/downloads/notices/Third-party-notices-v0.4.0.zip) · [Previous release: v0.4.0](https://gitlab.com/samuelitodavila-group/fifa-street-pc/-/releases/v0.4.0-experimental)
 
 For a new installation, provide your own ISO. To update, select your existing installation folder containing `Game` and `GameData`; no ISO extraction is needed. Only builds matching the three verified original module hashes are accepted. A shared title ID or a PAL/NTSC label alone does not establish compatibility.
 
-The instructions and download links below describe the earlier v0.3.0 source installer. Unlike v0.3.0, v0.4.0 contains generated game binaries. Their redistribution rights have not been established by the project's MIT licence; no legal clearance is claimed.
+The instructions and download links below describe the earlier v0.3.0 source installer. Unlike v0.3.0, v0.4.0 and v0.4.1 contain generated game binaries. Their redistribution rights have not been established by the project's MIT licence; no legal clearance is claimed.
 
 I'm bringing FIFA Street (2012) to Windows PC using ReXGlue. The project includes a graphical installer and a dedicated launcher with Direct3D 12 and Vulkan support, display settings, independent internal-resolution scaling and compatibility controls.
 

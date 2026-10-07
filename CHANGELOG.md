@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased (next release)
+## v0.4.1 Experimental
+
+Same precompiled game binaries as v0.4.0; the launcher and installer changed.
+
 
 - Launcher: new Readback Resolve option (Full, Some, Fast, None) in the Compatibility panel. Full remains the default because it is the validated mode; the other modes are not validated and Fast previously caused graphical corruption.
 - Lighter first-run defaults for better performance: 1x internal scale, FXAA, MSAA off and Memory Page State off. Existing launcher settings are not migrated; they keep their saved values.
