@@ -59,7 +59,7 @@ v0.3.0 Experimental packages two validated ReXGlue graphics backends:
 
 The launcher switches the validated `rexruntime.dll` and `rexgpu-xenos.dll` pair automatically when the graphics API is changed.
 
-Full resolve readback is fixed to the validated configuration for both backends.
+Full resolve readback is the default and the validated configuration for both backends. The launcher's Compatibility panel can switch Readback Resolve to Some, Fast or None for more FPS; these modes are not validated and Fast previously caused graphical corruption.
 
 ## Resolution controls
 

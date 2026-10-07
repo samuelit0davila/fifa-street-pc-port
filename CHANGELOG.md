@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (next release)
+
+- Launcher: new Readback Resolve option (Full, Some, Fast, None) in the Compatibility panel. Full remains the default because it is the validated mode; the other modes are not validated and Fast previously caused graphical corruption.
+- Lighter first-run defaults for better performance: 1x internal scale, FXAA, MSAA off and Memory Page State off. Existing launcher settings are not migrated; they keep their saved values.
+- Frame stats logging is now optional ("Frame stats log") and off by default.
+- The status bar warns when 3x or higher internal resolution is selected.
+- Launcher validates the selected resolution and monitor, and falls back to defaults when settings cannot be read.
+- Installer keeps an existing `fifastreet.toml` when installing over a previous copy, and reports an ISO with several `default.xex` files as unsupported.
+
 ## v0.4.0 Experimental
 
 - Faster installation using bundled precompiled binaries for the verified game build; no Visual Studio, compiler download or local game compilation in this installer.

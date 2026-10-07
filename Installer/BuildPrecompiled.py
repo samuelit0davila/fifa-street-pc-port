@@ -82,7 +82,7 @@ with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as pac
     for path in sorted(bundle.rglob('*')):
         if path.is_file():
             packed.write(path, path.relative_to(bundle).as_posix())
-subprocess.run(['rtk', 'proxy', 'dotnet', 'publish', str(root/'FifaStreetSetupTool/FifaStreetSetupTool.csproj'), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:RuntimeFrameworkVersion=8.0.31', f'-p:BundlePath={archive}', f'-p:PrecompiledManifest={manifest_path}', '-o', str(stage/'published')], check=True)
+subprocess.run(['dotnet', 'publish', str(root/'FifaStreetSetupTool/FifaStreetSetupTool.csproj'), '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true', '-p:RuntimeFrameworkVersion=8.0.31', f'-p:BundlePath={archive}', f'-p:PrecompiledManifest={manifest_path}', '-o', str(stage/'published')], check=True)
 exe = stage/'FifaStreetSetup-Precompiled-LOCAL.exe'
 shutil.copy2(stage/'published/FifaStreetSetup.exe', exe)
 (stage/'build.json').write_text(json.dumps({'installer': str(exe), 'sha256': digest(exe), 'bytes': exe.stat().st_size, 'publication': 'Local test only; redistribution not reviewed', 'manifest': manifest}, indent=2), encoding='utf-8')

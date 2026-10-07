@@ -71,7 +71,7 @@ Audit the distributable bundle separately for game ISOs, original XEX files, BIG
 
 1. Confirm the start screen and main menu display **PORTED BY: SAMUELITODAVILA**.
 2. Confirm Direct3D 12 and Vulkan can each launch the game.
-3. Confirm full resolve readback remains active.
+3. Confirm the Readback Resolve option is set to Full (the default) unless you are testing another mode.
 4. Test fullscreen and windowed mode. Minimize/restore repeatedly from the menu and during play.
 5. Play a complete match. Check controls, sound, transitions and results.
 6. Enter World Tour and exercise the progression path that previously failed.
