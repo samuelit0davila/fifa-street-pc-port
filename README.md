@@ -37,7 +37,7 @@ You need your own copy of the game: an Xbox 360 ISO of FIFA Street (2012). The I
 
 [![Watch ReStreet on YouTube](docs/images/gameplay-video.jpg)](https://www.youtube.com/watch?v=FiwdAOIHGFY)
 
-Installation, the new launcher and gameplay at 1440p 60 FPS. [Watch on YouTube](https://www.youtube.com/watch?v=FiwdAOIHGFY).
+Installation, the new launcher and gameplay at 1440p. [Watch on YouTube](https://www.youtube.com/watch?v=FiwdAOIHGFY).
 
 ## Download and install
 
