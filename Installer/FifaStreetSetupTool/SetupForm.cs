@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ReStreet.Ui;
 using System.Drawing;
 using System.IO.Compression;
 using System.Reflection;
@@ -43,10 +44,11 @@ internal static class Program
             try { CreditPatch.Apply(args[1]); return 0; }
             catch (Exception error) { Console.WriteLine(error); return 100; }
         }
-        if (args.Length == 2 && args[0] == "--preview")
+        if (args.Length >= 2 && args[0] == "--preview")
         {
             using var form = new SetupForm();
             form.Show();
+            if (args.Length > 2) form.PreviewState(args[2]);
             Application.DoEvents();
             using var bitmap = new Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
@@ -69,16 +71,16 @@ internal static class Program
     }
 }
 
-internal sealed class SetupForm : Form
+internal sealed class SetupForm : Form, ISceneHost
 {
     readonly TextBox iso = new();
     readonly TextBox destination = new();
     readonly TextBox details = new();
-    readonly Button install = new();
-    readonly Button cancel = new();
+    readonly SlantButton install = new();
+    readonly SlantButton cancel = new();
     System.Threading.CancellationTokenSource? cancellation;
-    readonly ProgressBar progress = new();
-    readonly Label status = new();
+    readonly SlantProgress progress = new();
+    readonly ThemedLabel status = new();
     readonly List<Control> inputs = new();
     readonly System.Windows.Forms.Timer timer = new() { Interval = 200 };
     readonly System.Collections.Concurrent.ConcurrentQueue<string> messages = new();
@@ -88,9 +90,33 @@ internal sealed class SetupForm : Form
     static readonly Color Accent = Color.FromArgb(133, 255, 72);
     internal const string Credit = "PORTED BY: SAMUELITODAVILA";
 
+    const float DesignHeight = 610f;
+    Bitmap? scene;
+    Size sceneSize;
+
+    // Layout on an 8 px grid (design pixels): left column margin 48, glass sheet 480..902 x 32..578
+    // with 24 px padding, so content spans x 504..878.
+    const int Left = 48, SheetX = 480, SheetY = 32, SheetW = 422, SheetH = 546, Pad = 24;
+    const int ContentX = SheetX + Pad, ContentW = SheetW - 2 * Pad;
+
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int SetWindowTheme(IntPtr handle, string appName, string? idList);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    static extern IntPtr SendMessage(IntPtr handle, int message, IntPtr wParam, IntPtr lParam);
+
+    // Keeps the end of a long path visible (the folder name is the useful part).
+    static void ShowEnd(TextBox box)
+    {
+        if (!box.IsHandleCreated) return;
+        box.SelectionStart = box.TextLength;
+        box.SelectionLength = 0;
+        SendMessage(box.Handle, 0x00B7 /* EM_SCROLLCARET */, IntPtr.Zero, IntPtr.Zero);
+    }
+
     internal SetupForm()
     {
-        Text = "FIFA Street PC — Setup";
+        Text = "ReStreet - FIFA Street 2012 Recompiled — Setup";
         using (var icon = Assembly.GetExecutingAssembly().GetManifestResourceStream("fifastreet.ico")!)
             Icon = new Icon(icon);
         ClientSize = new Size(930, 610);
@@ -98,29 +124,28 @@ internal sealed class SetupForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
-        BackColor = Color.FromArgb(10, 12, 16);
-        ForeColor = Color.White;
-        Font = new Font("Segoe UI", 10);
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        BackColor = StreetTheme.Asphalt;
+        ForeColor = StreetTheme.Ink;
+        Font = StreetTheme.Body(10);
+        AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
+        HandleCreated += (_, _) => StreetTheme.ApplyDarkTitleBar(Handle);
 
-        using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream("cover.jpg")
-            ?? throw new InvalidOperationException("The installer artwork is missing.");
-        using var source = Image.FromStream(resource);
-        var artwork = new MessiPicture { Bounds = new Rectangle(0, 0, 310, 610), Image = new Bitmap(source), BackColor = Color.Black };
-        Controls.Add(artwork);
-        Controls.Add(Label("FIFA STREET", 340, 27, 550, 50, 30, Accent));
-        Controls.Add(Label("PC INSTALLER", 343, 80, 540, 30, 12, Color.LightGray));
-        Controls.Add(Label(Credit + "\nContributions: Emran_Ahm3d", 343, 113, 545, 40, 10, Accent));
-        Controls.Add(Label(PrecompiledPackage.Enabled
-            ? "New installation: select your ISO. To update, choose your existing game folder below (the folder containing Game and GameData)."
-            : "Select your FIFA Street ISO and choose where to install the game.", 343, 158, 548, 48, 9));
-        AddPath("FIFA Street ISO", iso, 209, () =>
+        Controls.Add(Text_(PrecompiledPackage.Enabled
+            ? "New installation: select your ISO. To update, choose your existing game folder (the folder containing Game and GameData)."
+            : "Select your FIFA Street ISO and choose where to install the game.", Left, 264, 384, 72, 10f, StreetTheme.Muted, false));
+
+        Controls.Add(Text_("Setup", ContentX, SheetY + Pad, ContentW, 32, 20f, StreetTheme.Ink, true));
+        iso.PlaceholderText = "Choose your FIFA Street ISO";
+        AddPath("FIFA Street ISO", iso, 104, () =>
         {
             using var dialog = new OpenFileDialog { Title = "Select FIFA Street ISO", Filter = "ISO image (*.iso)|*.iso", CheckFileExists = true };
             if (dialog.ShowDialog(this) == DialogResult.OK) iso.Text = dialog.FileName;
         });
         destination.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Games", "FIFA Street PC");
-        AddPath(PrecompiledPackage.Enabled ? "Installation folder / existing game folder to update" : "Installation folder", destination, 288, () =>
+        AddPath(PrecompiledPackage.Enabled ? "Install folder, or game folder to update" : "Installation folder", destination, 184, () =>
         {
             string initialFolder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
             try
@@ -136,36 +161,42 @@ internal sealed class SetupForm : Form
             using var dialog = new FolderBrowserDialog { Description = PrecompiledPackage.Enabled ? "Choose a new installation folder, or your existing game folder to update (containing Game and GameData)." : "Choose installation folder", UseDescriptionForTitle = true, InitialDirectory = initialFolder };
             if (dialog.ShowDialog(this) == DialogResult.OK) destination.Text = dialog.SelectedPath;
         });
-        destination.TextChanged += (_, _) => RefreshInstallMode();
-        status.SetBounds(343, 373, 550, 43);
+        destination.TextChanged += (_, _) => { RefreshInstallMode(); ShowEnd(destination); };
+        destination.HandleCreated += (_, _) => ShowEnd(destination);
+        destination.Leave += (_, _) => ShowEnd(destination);
+
+        status.SetBounds(ContentX, 272, ContentW, 40);
+        status.Font = StreetTheme.Body(10);
+        status.ForeColor = StreetTheme.Ink;
         status.Text = PrecompiledPackage.Enabled ? "Your ISO supplies the game data. Ready-to-play binaries are included." : "Game files will be created on your PC from your ISO.";
         Controls.Add(status);
-        progress.SetBounds(343, 423, 548, 10);
+        progress.SetBounds(ContentX, 328, ContentW, 12);
         Controls.Add(progress);
-        var note = Label(PrecompiledPackage.Enabled ? "No compiler, Visual Studio or Internet connection required." : "An Internet connection may be needed to set up Windows components.", 343, 448, 548, 35, 9, Color.Silver);
-        Controls.Add(note);
-        install.SetBounds(343, 500, 548, 46);
-        install.Text = "INSTALL FIFA STREET";
-        install.BackColor = Accent;
-        install.ForeColor = Color.Black;
-        install.FlatStyle = FlatStyle.Flat;
-        install.Font = new Font("Segoe UI", 11, FontStyle.Bold);
+        Controls.Add(Text_(PrecompiledPackage.Enabled ? "No compiler, Visual Studio or Internet connection required." : "An Internet connection may be needed to set up Windows components.", ContentX, 352, ContentW, 40, 10f, StreetTheme.Muted, false));
+
+        install.SetBounds(ContentX, 420, ContentW, 80);
+        install.Kind = SlantKind.Primary;
+        install.Text = "INSTALL ReStreet";
+        install.Font = StreetTheme.Condensed(22, FontStyle.Bold);
         install.Click += async (_, _) => await Install();
         AcceptButton = install;
         Controls.Add(install);
-        var showDetails = new Button { Text = "Show details", Bounds = new Rectangle(343, 559, 130, 30), FlatStyle = FlatStyle.Flat, ForeColor = Color.LightGray };
+
+        var showDetails = new SlantButton { Kind = SlantKind.Text, Align = StringAlignment.Near, Text = "Show details", Bounds = new Rectangle(ContentX, 522, 150, 32), Font = StreetTheme.Body(10) };
         showDetails.Click += (_, _) =>
         {
             details.Visible = !details.Visible;
             showDetails.Text = details.Visible ? "Hide details" : "Show details";
             MaximumSize = Size.Empty;
-            Height += details.Visible ? 180 : -180;
+            Height += (int)((details.Visible ? 180 : -180) * DeviceDpi / 96f);
             MaximumSize = Size;
         };
         Controls.Add(showDetails);
+        cancel.Kind = SlantKind.Text;
+        cancel.Align = StringAlignment.Far;
         cancel.Text = "Cancel";
-        cancel.SetBounds(761, 559, 130, 30);
-        cancel.FlatStyle = FlatStyle.Flat;
+        cancel.Font = StreetTheme.Body(10);
+        cancel.SetBounds(ContentX + ContentW - 150, 522, 150, 32);
         cancel.Enabled = false;
         cancel.Click += (_, _) =>
         {
@@ -182,13 +213,16 @@ internal sealed class SetupForm : Form
             }
         };
         Controls.Add(cancel);
-        details.SetBounds(20, 620, 885, 155);
+        details.SetBounds(Left, 626, SheetX + SheetW - Left, 132);
         details.Multiline = true;
         details.ReadOnly = true;
         details.ScrollBars = ScrollBars.Vertical;
-        details.BackColor = Color.FromArgb(18, 22, 28);
+        details.BorderStyle = BorderStyle.None;
+        details.BackColor = Color.FromArgb(24, 27, 31);
         details.ForeColor = Color.Gainsboro;
+        details.Font = StreetTheme.Body(9);
         details.Visible = false;
+        details.HandleCreated += (_, _) => SetWindowTheme(details.Handle, "DarkMode_Explorer", null);
         Controls.Add(details);
         timer.Tick += (_, _) => DrainMessages();
         timer.Start();
@@ -198,37 +232,126 @@ internal sealed class SetupForm : Form
             e.Cancel = true;
             CancelInstallation();
         };
-        FormClosed += (_, _) => { timer.Dispose(); artwork.Image?.Dispose(); };
+        FormClosed += (_, _) => { timer.Dispose(); scene?.Dispose(); };
         RefreshInstallMode();
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        BuildScene();
+        using (var floor = new SolidBrush(StreetTheme.Asphalt)) e.Graphics.FillRectangle(floor, ClientRectangle);
+        e.Graphics.DrawImageUnscaled(scene!, 0, 0);
+    }
+
+    // Backdrop, glass sheet, wordmark and credit are painted once per size.
+    public Bitmap SceneBitmap { get { BuildScene(); return scene!; } }
+
+    void BuildScene()
+    {
+        float s = ClientSize.Width / (float)StreetTheme.DesignWidth;
+        var size = new Size(ClientSize.Width, (int)Math.Ceiling(DesignHeight * s));
+        if (scene != null && sceneSize == size) return;
+        scene?.Dispose();
+        sceneSize = size;
+        using var backdrop = StreetTheme.RenderBackdrop(size, StreetTheme.DesignWidth, DesignHeight);
+        using var blurred = StreetTheme.Blur(backdrop, 10);
+        scene = new Bitmap(backdrop);
+        using var g = Graphics.FromImage(scene);
+        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        g.ScaleTransform(s, s);
+
+        StreetTheme.DrawGlass(g, blurred, s, new RectangleF(SheetX, SheetY, SheetW, SheetH), 16);
+
+        using (var small = new Font(StreetTheme.CondensedFamily, 16, FontStyle.Bold, GraphicsUnit.Pixel))
+        using (var yellow = new SolidBrush(StreetTheme.Yellow))
+            StreetTheme.DrawSpaced(g, "FIFA STREET 2012 RECOMPILED", small, yellow, new PointF(Left, 56), 3.2f);
+        StreetTheme.DrawWordmark(g, "ReStreet", new PointF(Left, 88), 118, StreetTheme.Ink);
+        var tag = new RectangleF(Left, 192, 160, 32);
+        using (var bar = new SolidBrush(StreetTheme.Yellow)) g.FillPolygon(bar, StreetTheme.Slant(tag, 10));
+        using (var tagFont = new Font(StreetTheme.CondensedFamily, 16, FontStyle.Bold, GraphicsUnit.Pixel))
+        using (var dark = new SolidBrush(StreetTheme.YellowDark))
+            StreetTheme.DrawSpaced(g, "PC INSTALLER", tagFont, dark, new PointF(Left + 12, 198), 2.6f);
+
+        using var name = new Font("Segoe UI", 15, FontStyle.Regular, GraphicsUnit.Pixel);
+        StreetTheme.DrawLabelValue(g, "Ported by:", "SamuelitoDaVila", name, StreetTheme.Ink, StreetTheme.Ink, Left, 534);
+        StreetTheme.DrawLabelValue(g, "Contributions:", "Emran_Ahm3d", name, StreetTheme.Muted, StreetTheme.Muted, Left, 557);
+    }
+
+    static ThemedLabel Text_(string text, int x, int y, int width, int height, float size, Color color, bool condensed) =>
+        new()
+        {
+            Text = text,
+            Bounds = new Rectangle(x, y, width, height),
+            Font = condensed ? StreetTheme.Condensed(size, FontStyle.Bold) : StreetTheme.Body(size),
+            ForeColor = color
+        };
+
+    // Caption (16 high) + field (40 high) + Browse (96 wide) on one row; `y` is the caption's top.
+    void AddPath(string label, TextBox box, int y, Action browse)
+    {
+        Controls.Add(Text_(label.ToUpperInvariant(), ContentX, y, ContentW, 16, 9f, StreetTheme.Muted, true));
+        int fieldY = y + 24;
+        const int browseW = 96, gap = 8;
+        box.Font = StreetTheme.Body(10);
+        box.AccessibleName = label;
+        var frame = new FieldFrame(box) { Bounds = new Rectangle(ContentX, fieldY, ContentW - browseW - gap, 40) };
+        Controls.Add(frame);
+        var button = new SlantButton { Kind = SlantKind.Glass, Text = "Browse", Bounds = new Rectangle(ContentX + ContentW - browseW, fieldY, browseW, 40), Font = StreetTheme.Body(10) };
+        button.AccessibleName = "Browse " + label;
+        button.Click += (_, _) => browse();
+        Controls.Add(button);
+        inputs.Add(box);
+        inputs.Add(button);
+    }
+
+    // Screenshots of the states that need a real installation to reach (setup --preview <png> <state>).
+    internal void PreviewState(string state)
+    {
+        switch (state)
+        {
+            case "installing":
+                iso.Text = @"D:\Games\FIFA Street\FIFASTREET.iso";
+                destination.Text = @"D:\Games\ReStreet";
+                foreach (var input in inputs) input.Enabled = false;
+                install.Enabled = false;
+                install.Text = "INSTALLING…";
+                progress.Value = 64;
+                cancel.Enabled = true;
+                status.Text = "Extracting the FIFA Street ISO… (3/6)";
+                break;
+            case "done":
+                completed = true;
+                installedPath = @"D:\Games\ReStreet";
+                progress.Value = 100;
+                status.Text = "Installation complete. You can now launch the game.";
+                install.Text = "OPEN LAUNCHER";
+                cancel.SetBounds(ContentX + ContentW - 224, 522, 224, 32);
+                cancel.Text = "Create desktop shortcut";
+                cancel.Enabled = true;
+                break;
+            case "error":
+                status.Text = "Installation failed. Check the details and installation.log.";
+                install.Text = "TRY AGAIN";
+                break;
+            case "details":
+                details.Text = "Preparing installation tools…\r\nChecking the ISO…\r\nExtracting the FIFA Street ISO…";
+                details.Visible = true;
+                MaximumSize = Size.Empty;
+                Height += (int)(180 * DeviceDpi / 96f);
+                break;
+        }
+        Application.DoEvents();
     }
 
     void RefreshInstallMode()
     {
         if (busy || completed || !PrecompiledPackage.Enabled) return;
         bool updating = InstallationUpdate.IsInstallation(destination.Text);
-        install.Text = updating ? "UPDATE FIFA STREET" : "INSTALL FIFA STREET";
+        install.Text = updating ? "UPDATE ReStreet" : "INSTALL ReStreet";
         iso.Enabled = !updating;
         inputs[1].Enabled = !updating;
-        status.Text = updating ? "Existing installation found. Click UPDATE FIFA STREET. No ISO required; saves and preferences are preserved." : "Select your ISO for a new installation, or choose your existing game folder to update.";
-    }
-
-    static Label Label(string text, int x, int y, int width, int height, float size = 10, Color? color = null) =>
-        new() { Text = text, Bounds = new Rectangle(x, y, width, height), Font = new Font("Segoe UI", size, size >= 20 ? FontStyle.Bold : FontStyle.Regular), ForeColor = color ?? Color.White };
-
-    void AddPath(string label, TextBox box, int y, Action browse)
-    {
-        Controls.Add(Label(label, 343, y, 548, 25));
-        box.SetBounds(343, y + 28, 432, 30);
-        box.BackColor = Color.FromArgb(25, 29, 36);
-        box.ForeColor = Color.White;
-        box.AccessibleName = label;
-        Controls.Add(box);
-        var button = new Button { Text = "Browse…", Bounds = new Rectangle(785, y + 25, 106, 33), FlatStyle = FlatStyle.Flat };
-        button.AccessibleName = "Browse " + label;
-        button.Click += (_, _) => browse();
-        Controls.Add(button);
-        inputs.Add(box);
-        inputs.Add(button);
+        status.Text = updating ? "Existing installation found. Click UPDATE ReStreet. No ISO required; saves and preferences are preserved." : "Select your ISO for a new installation, or choose your existing game folder to update.";
     }
 
     async Task Install()
@@ -324,17 +447,17 @@ internal sealed class SetupForm : Form
             progress.Value = 100;
             status.Text = updating ? "Update complete. Saves and preferences preserved." : "Installation complete. You can now launch the game.";
             install.Text = "OPEN LAUNCHER";
-            cancel.SetBounds(620, 559, 271, 30);
+            cancel.SetBounds(ContentX + ContentW - 224, 522, 224, 32);
             cancel.Text = "Create desktop shortcut";
             cancel.Enabled = true;
-            try { File.WriteAllText(Path.Combine(target, "Play FIFA Street.cmd"), "@echo off\r\ncd /d \"%~dp0\"\r\nstart \"\" \"%~dp0FifaStreetLauncher.exe\"\r\n", Encoding.ASCII); }
+            try { File.WriteAllText(Path.Combine(target, "Play ReStreet.cmd"), "@echo off\r\ncd /d \"%~dp0\"\r\nstart \"\" \"%~dp0FifaStreetLauncher.exe\"\r\n", Encoding.ASCII); }
             catch (IOException error) { MessageBox.Show(this, "The game was installed, but the launch shortcut could not be written.\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
             catch (UnauthorizedAccessException error) { MessageBox.Show(this, "The game was installed, but the launch shortcut could not be written.\n\n" + error.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Warning); }
         }
         else if (result == 1223)
         {
             status.Text = updating ? "Update cancelled. Previous files restored." : "Installation cancelled. Incomplete files remain in the selected folder.";
-            install.Text = "INSTALL FIFA STREET";
+            install.Text = "INSTALL ReStreet";
             foreach (var input in inputs) input.Enabled = true;
             RefreshInstallMode();
         }
@@ -364,7 +487,7 @@ internal sealed class SetupForm : Form
         string launcher = Path.Combine(installFolder, "FifaStreetLauncher.exe");
         if (!File.Exists(launcher)) throw new FileNotFoundException("The installed launcher was not found.", launcher);
         string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
-        string shortcutPath = Path.Combine(desktop, "FIFA Street PC.lnk");
+        string shortcutPath = Path.Combine(desktop, "ReStreet.lnk");
         object? shell = null;
         object? shortcut = null;
         try
@@ -376,7 +499,7 @@ internal sealed class SetupForm : Form
             link.TargetPath = launcher;
             link.WorkingDirectory = installFolder;
             link.IconLocation = launcher + ",0";
-            link.Description = "FIFA Street PC — " + Credit;
+            link.Description = "ReStreet - FIFA Street 2012 Recompiled — Ported by: SamuelitoDaVila";
             link.Save();
         }
         finally

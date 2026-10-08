@@ -1,7 +1,6 @@
-[functions]
-# Internal blocks and shared epilogue belong to the allocation routine.
-0x8272ACE8 = { end = 0x8272B530 }
-
+[functions]
+0x8272B4FC = { end = 0x8272B518 }
+0x8272B518 = { end = 0x8272B528 }
 # BEGIN FIFA BULK FUNCTIONS
 0x83C53188 = { end = 0x83C5318C }
 # END FIFA BULK FUNCTIONS
@@ -714,15 +713,10 @@
 0x8264B064 = { end = 0x8264B06C }
 0x8264B06C = { end = 0x8264B074 }
 0x8264B074 = { end = 0x8264B07C }
-# Shared constant-return tails used by the adjacent CTR dispatchers.
-0x8264B07C = { end = 0x8264B09C }
-0x8264B09C = { end = 0x8264B0A4 }
-0x8264B0A4 = { end = 0x8264B0AC }
-0x8264B0AC = { end = 0x8264B0DC }
-0x8264B0DC = { end = 0x8264B0E4 }
+0x8264B07C = { end = 0x8264B0AC }
+0x8264B0AC = { end = 0x8264B0E4 }
 0x8264B0E4 = { end = 0x8264B114 }
-0x8264B114 = { end = 0x8264B128 }
-0x8264B128 = { end = 0x8264B130 }
+0x8264B114 = { end = 0x8264B130 }
 0x8264B130 = { end = 0x8264B168 }
 0x8264B168 = { end = 0x8264B184 }
 0x8264B184 = { end = 0x8264B188 }
@@ -3453,6 +3447,9 @@
 0x8272A9E8 = { end = 0x8272A9F0 }
 0x8272ACDC = { end = 0x8272ACE0 }
 0x8272ACE0 = { end = 0x8272ACE8 }
+0x8272B394 = { end = 0x8272B3CC }
+0x8272B3CC = { end = 0x8272B50C }
+0x8272B50C = { end = 0x8272B530 }
 0x8272B5C4 = { end = 0x8272B5C8 }
 0x8272B5D4 = { end = 0x8272B5D8 }
 0x8272B73C = { end = 0x8272B740 }
@@ -57163,10 +57160,3 @@
 0x83C5317C = { end = 0x83C53180 }
 0x83C53180 = { end = 0x83C53184 }
 0x83C53184 = { end = 0x83C53188 }
-
-# Codegen revision: preserve caller identity when shared-tail entries overlap.
-# Codegen revision: retain local labels when new shared-tail entries overlap.
-# Codegen revision: verify emitted labels and retain arithmetic shared tails.
-# Codegen revision: dispatch registered jump-table case entries as functions.
-
-# Codegen revision: unsigned vector packs preserve source aliases 20260930

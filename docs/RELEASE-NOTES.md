@@ -1,105 +1,34 @@
-﻿# FIFA Street Recompiled v0.3.0 Experimental
+# ReStreet - FIFA Street 2012 Recompiled v1.0
 
-v0.3.0 is a major experimental update to the FIFA Street PC recompilation project. It introduces a new multi-backend launcher and installer, Direct3D 12 support alongside Vulkan, independent output/internal resolution controls, updated ReXGlue compatibility changes and the previously completed World Tour correction.
+First stable release of ReStreet, FIFA Street (2012) for Windows PC. This version is offline only.
 
-## Highlights
+## New in v1.0
 
-- Added **Direct3D 12** as a validated graphics backend.
-- Kept **Vulkan** as a validated graphics backend.
-- Added graphics-API selection directly to the launcher.
-- Added automatic switching of the validated ReXGlue runtime/GPU DLL pair.
-- Reworked the launcher UI.
-- Separated **Output Resolution** from **Internal Resolution**.
-- Added internal rendering scales from **1x to 4x**.
-- Added common output modes through **3840x2160**, including 3200x1800.
-- Full resolve readback is fixed to the validated configuration.
-- Updated the installer to package and verify both graphics backends.
-- Updated the ReXGlue project patch and verified that it applies cleanly against the recorded `c94f5eb` base.
-- Retained the World Tour `FootballCompEngzf` correction.
+- **Performance profiles** in the launcher: Balanced (default), Quality for strong PCs, Performance for weaker PCs, and Custom. Changing any option by hand switches the profile to Custom.
+- **Shader cache included.** Pre-built shaders ship with the game and are copied on the first run, so the first matches have fewer slow moments. Shaders you already have are never replaced.
+- **FPS counter.** Press Home to show or hide a small FPS number in the top-left corner. It scales with the game's resolution and changes colour: green from 55 FPS, yellow from 30, red below.
+- **Exit shortcut.** Hold START and press B (Xbox layout) or START and Circle (PlayStation layout) on any screen to open "EXIT THE GAME?". A confirms, B cancels. Available in English, German, French, Spanish, Italian and Portuguese.
+- **New launcher and installer design,** with support for the Windows display scale and small screens.
+- **New name:** ReStreet - FIFA Street 2012 Recompiled.
 
-## Graphics backends
+## Unchanged
 
-The release package now contains separate:
+The game files are the same as in v0.4.1, so World Tour, saves and your launcher settings keep working. Saves live in `Documents\fifastreet` and are not touched by the installer.
 
-- `Game/Backends/D3D12`
-- `Game/Backends/Vulkan`
+## How to install
 
-backend directories.
+1. Download `FifaStreetSetup.exe` and check its SHA-256 against the value on the release page.
+2. Run it, choose your own FIFA Street (2012) Xbox 360 ISO and an empty folder, and press **INSTALL ReStreet**.
+3. Press **OPEN LAUNCHER**, then **PLAY**.
 
-The launcher copies the selected backend's `rexruntime.dll` and `rexgpu-xenos.dll` into the active game directory before launch.
+To update, select the folder that contains `Game` and `GameData`. No ISO is needed.
 
-Direct3D 12 is the default graphics API. GPU-adapter selection is available for D3D12.
+## Requirements (estimates)
 
-Vulkan uses automatic device selection.
+Windows 10 or 11 (64-bit), a CPU with SSSE3, a Direct3D 12 or Vulkan GPU (about GTX 900 / RX 400 or newer), 8 GB RAM and 12 GB of free disk space. On a weaker PC use the Performance profile. See [STATUS.md](STATUS.md) for what was and was not tested.
 
-Both backends were launched successfully from the final clean multi-backend installation.
+## Notes
 
-## Resolution changes
-
-Output resolution no longer determines the internal render scale.
-
-Available internal scales are:
-
-- **1x** — 1280x720
-- **2x** — 2560x1440
-- **3x** — 3840x2160
-- **4x** — 5120x2880
-
-Common output modes exposed by the launcher include:
-
-- 1280x720
-- 1920x1080
-- 2560x1440
-- 3200x1800
-- 3840x2160
-
-2560x1440 output with 2x internal rendering was specifically tested during backend validation.
-
-Higher internal scales and 4K output are available for testing, but this release does not claim that every combination maintains 60 FPS.
-
-## World Tour
-
-The installer continues to discover and recompile:
-
-`dlc/dlc_FootballCompEng/dlc/FootballCompEng/FootballCompEngzf.xex.dll`
-
-into:
-
-`fifastreet_FootballCompEngzf_xex.dll`
-
-This addresses the previous World Tour crash/return-to-menu during Bronze/Silver/Gold progression.
-
-World Tour was retested successfully on the final clean v0.3.0 multi-backend installation.
-
-## Installer changes
-
-The installer now packages validated Direct3D 12 and Vulkan ReXGlue backend pairs and verifies their SHA-256 hashes.
-
-It still performs the complete local workflow from the user's own Xbox 360 ISO:
-
-1. Extract the ISO.
-2. Apply the start-screen and main-menu credits.
-3. Recompile the main executable.
-4. Recompile `fifadllzf.xex.dll`.
-5. Recompile `FootballCompEngzf.xex.dll`.
-6. Install both graphics backends.
-7. Install the launcher.
-
-No ISO, original game data, XEX files, BIG/BH archives or generated game binaries are distributed with the project.
-
-## Validation
-
-The final v0.3.0 release-candidate installer was tested through a clean installation.
-
-Confirmed in that installation:
-
-- successful ISO extraction and recompilation;
-- launcher startup;
-- Direct3D 12 launch;
-- Vulkan launch;
-- automatic backend DLL switching;
-- 2560x1440 output with 2x internal rendering;
-- Practice;
-- World Tour.
-
-The project remains experimental. Broader GPU/driver, controller, audio, save, venue, resolution and long-session testing is still welcome.
+- Performance depends on your hardware and drivers; the profiles are starting points, not guarantees.
+- The installer includes generated game binaries. The project's MIT licence does not establish the right to redistribute them, and no legal clearance is claimed.
+- This is an unofficial community project, with no affiliation to EA, Microsoft or Xbox.

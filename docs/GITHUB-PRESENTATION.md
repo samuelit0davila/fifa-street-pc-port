@@ -2,11 +2,11 @@
 
 ## Suggested repository name
 
-`FIFA-Street-Recompiled`
+`ReStreet`
 
 ## About description
 
-Experimental FIFA Street (2012) PC recompilation using ReXGlue, with a Windows ISO installer and launcher. Bring your own game. By SAMUELITODAVILA.
+ReStreet - FIFA Street (2012) for Windows PC, recompiled with ReXGlue, with an installer and launcher. Offline. Bring your own game. Ported by SamuelitoDaVila.
 
 ## Suggested topics
 
@@ -16,9 +16,7 @@ Experimental FIFA Street (2012) PC recompilation using ReXGlue, with a Windows I
 
 Commit this source folder and its documentation. Upload the installer `.exe` as a Release asset rather than committing it to the source tree. GitHub Releases are designed to contain downloadable binaries and release notes; see [GitHub's documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
 
-The prepared release candidate is `FifaStreet-Setup.exe`. Its checksum matches the final built candidate. Complete its latest ISO installation test before publication. For a public asset, a stable name such as `FifaStreetSetup-Windows-x64.exe` is clearer. Renaming the installer does not affect its operation.
-
-Use `docs/RELEASE-NOTES.md` for an initial experimental pre-release. Do not call the project fully playable until gameplay tests support that description. Keep the single observed installation duration identified as a measurement, not a promised install time.
+The release asset is `FifaStreetSetup.exe` (v1.0). Its SHA-256 is in `FifaStreetSetup.exe.sha256` and in the release text. Use `docs/RELEASE-NOTES.md` as the release description. Keep the requirements marked as estimates until more hardware reports arrive, and keep the legal note about the generated game binaries.
 
 ## Images
 

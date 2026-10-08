@@ -11,6 +11,7 @@
   <ItemGroup>
     <EmbeddedResource Include="cover.jpg" LogicalName="cover.jpg" />
     <EmbeddedResource Include="fifastreet.ico" LogicalName="fifastreet.ico" />
+    <Compile Include="..\..\Installer\FifaStreetSetupTool\ThemeKit.cs" Link="ThemeKit.cs" />
   </ItemGroup>
 
 </Project>

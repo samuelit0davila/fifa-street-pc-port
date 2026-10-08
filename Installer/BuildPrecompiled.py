@@ -13,6 +13,7 @@ import zipfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--runtime', type=Path, required=True)
 parser.add_argument('--launcher', type=Path, help='Optional newly built launcher')
+parser.add_argument('--seed', type=Path, help='Optional shader-seed folder shipped next to the executable')
 parser.add_argument('--worldtour', type=Path, help='Optional verified World Tour module candidate')
 parser.add_argument('--inputs', type=Path, required=True, help='Folder containing the three original modules used for recompilation')
 parser.add_argument('--extractor', type=Path, required=True)
@@ -41,6 +42,8 @@ for backend in ['D3D12', 'Vulkan']:
     for name in ['rexruntime.dll', 'rexgpu-xenos.dll', 'TracyClient.dll']:
         shutil.copy2(args.runtime/'Backends'/backend/name, destination/name)
 shutil.copy2(root/'payload/Game/fifastreet.toml', game/'fifastreet.toml')
+if args.seed:
+    shutil.copytree(args.seed, game/'shader-seed')
 required_crt = ['msvcp140.dll', 'msvcp140_atomic_wait.dll', 'vcruntime140.dll', 'vcruntime140_1.dll']
 if not all((args.crt/name).is_file() for name in required_crt):
     raise ValueError('The official x64 CRT folder is incomplete.')

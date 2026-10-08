@@ -1,4 +1,23 @@
-# Changelog
+﻿# ReStreet - FIFA Street 2012 Recompiled: changelog
+
+## v1.0
+
+First stable release. This version is offline only: it has no online play.
+
+**The project is now called ReStreet - FIFA Street 2012 Recompiled.** The launcher, the setup and the desktop shortcut use the new name. Your install folder, saves and settings are not affected.
+
+### New
+- **Performance profiles in the launcher.** Choose Balanced (the default), Quality for strong PCs, or Performance for weaker PCs. Performance uses native resolution, no post-processing, a faster graphics readback and no occlusion queries. If you change any single option by hand, the profile switches to Custom.
+- **Shader cache included.** A set of pre-built shaders now ships with the game and is copied on the first run, so the first matches have fewer slow moments. Shaders you already have are never overwritten.
+- **FPS counter.** Press Home to show or hide a small FPS number in the top-left corner. It scales with the game's resolution and changes colour: green from 55 FPS, yellow from 30, red below. It replaces the old statistics panel.
+- **Exit shortcut.** Hold START and press B (Xbox layout) or START and Circle (PlayStation layout) on any screen to open "EXIT THE GAME?". A confirms, B cancels, and the game then closes cleanly. Available in English, German, French, Spanish, Italian and Portuguese.
+
+### Unchanged
+- The game files are the same as in v0.4.1, so World Tour, saves and your launcher settings keep working. Saves live in `Documents\fifastreet` and are not touched by the installer.
+
+### Notes
+- Performance still depends on your hardware and drivers. The profiles are starting points, not guarantees.
+- The project's MIT licence does not establish rights to redistribute game-derived binaries; no legal clearance is claimed.
 
 ## v0.4.1 Experimental
 

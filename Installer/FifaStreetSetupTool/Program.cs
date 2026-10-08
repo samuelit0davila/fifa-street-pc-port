@@ -13,7 +13,7 @@ internal class InstallerEngine
         CancellationToken.ThrowIfCancellationRequested();
 
         Console.WriteLine("=======================================");
-        Console.WriteLine("       FIFA STREET PC SETUP TOOL");
+        Console.WriteLine("       ReStreet SETUP TOOL");
         Console.WriteLine("=======================================");
         Console.WriteLine();
 
@@ -24,7 +24,7 @@ internal class InstallerEngine
             Console.WriteLine("FifaStreetSetupTool.exe <ISO> <InstallationFolder> [BuildWorkspace]");
             Console.WriteLine();
             Console.WriteLine("Example:");
-            Console.WriteLine(@"FifaStreetSetupTool.exe ""D:\FIFASTREET.iso"" ""C:\Games\FIFA Street PC""");
+            Console.WriteLine(@"FifaStreetSetupTool.exe ""D:\FIFASTREET.iso"" ""C:\Games\ReStreet""");
             return 1;
         }
 

@@ -8,55 +8,65 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows.Forms;
+using ReStreet.Ui;
 
 namespace FifaStreetLauncher;
 
-public class LauncherForm : Form
+public class LauncherForm : Form, ISceneHost
 {
-    private readonly Color Bg = Color.FromArgb(10, 12, 16);
-    private readonly Color Surface = Color.FromArgb(18, 22, 28);
-    private readonly Color SurfaceAlt = Color.FromArgb(24, 29, 36);
-    private readonly Color Border = Color.FromArgb(48, 57, 68);
-    private readonly Color Accent = Color.FromArgb(133, 255, 72);
-    private readonly Color AccentHover = Color.FromArgb(111, 229, 53);
-    private readonly Color TextPrimary = Color.FromArgb(245, 247, 250);
-    private readonly Color TextSecondary = Color.FromArgb(151, 161, 175);
+    private readonly Color Bg = StreetTheme.Asphalt;
+    private readonly Color Surface = Color.FromArgb(28, 31, 36);
+    private readonly Color SurfaceAlt = StreetTheme.Field;
+    private readonly Color Border = Color.FromArgb(62, 66, 72);
+    private readonly Color Accent = StreetTheme.Yellow;
+    private readonly Color AccentHover = Color.FromArgb(255, 212, 48);
+    private readonly Color TextPrimary = StreetTheme.Ink;
+    private readonly Color TextSecondary = StreetTheme.Muted;
 
-    private readonly ComboBox resolutionBox = new();
-    private readonly ComboBox refreshBox = new();
-    private readonly ComboBox displayModeBox = new();
-    private readonly ComboBox monitorBox = new();
-    private readonly ComboBox graphicsApiBox = new();
-    private readonly ComboBox gpuBox = new();
+    private readonly GlassCombo resolutionBox = new();
+    private readonly GlassCombo refreshBox = new();
+    private readonly GlassCombo displayModeBox = new();
+    private readonly GlassCombo monitorBox = new();
+    private readonly GlassCombo graphicsApiBox = new();
+    private readonly GlassCombo gpuBox = new();
     private readonly List<int> gpuAdapterIndices = new();
-    private readonly ComboBox postEffectBox = new();
-    private readonly ComboBox internalResolutionBox = new();
-    private readonly ComboBox gameLanguageBox = new();
-    private readonly ComboBox readbackResolveBox = new();
+    private readonly GlassCombo postEffectBox = new();
+    private readonly GlassCombo internalResolutionBox = new();
+    private readonly GlassCombo gameLanguageBox = new();
+    private readonly GlassCombo readbackResolveBox = new();
+    private readonly GlassCombo profileBox = new();
+    private bool applyingProfile;
+    private static readonly string[] ProfileNames =
+    {
+        "Balanced (default)",
+        "Quality (strong PCs)",
+        "Performance (weak PCs)",
+        "Custom"
+    };
     private static readonly string[] ReadbackResolveModes = { "full", "some", "fast", "none" };
     private static readonly int[] GameLanguageIds = { 1, 5, 4, 3, 6 };
 
-    private readonly CheckBox vsyncBox = new();
-    private readonly CheckBox vrrBox = new();
-    private readonly CheckBox msaaBox = new();
-    private readonly CheckBox readbackMemexportBox = new();
-    private readonly CheckBox readbackMemexportFastBox = new();
-    private readonly CheckBox clearMemoryPageStateBox = new();
-    private readonly CheckBox occlusionQueryBox = new();
-    private readonly CheckBox asyncShadersBox = new();
-    private readonly CheckBox logFrameStatsBox = new();
+    private readonly GlassToggle vsyncBox = new();
+    private readonly GlassToggle vrrBox = new();
+    private readonly GlassToggle msaaBox = new();
+    private readonly GlassToggle readbackMemexportBox = new();
+    private readonly GlassToggle readbackMemexportFastBox = new();
+    private readonly GlassToggle clearMemoryPageStateBox = new();
+    private readonly GlassToggle occlusionQueryBox = new();
+    private readonly GlassToggle asyncShadersBox = new();
+    private readonly GlassToggle logFrameStatsBox = new();
 
     private readonly TextBox gamePathBox = new();
     private readonly TextBox exePathBox = new();
 
-    private readonly Label statusLabel = new();
-    private readonly Label hardwareLabel = new();
+    private readonly ThemedLabel statusLabel = new();
+    private readonly ThemedLabel hardwareLabel = new();
     private readonly Label advancedChevron = new();
 
     private readonly RoundedPanel advancedPanel = new();
-    private readonly ModernButton advancedButton = new();
+    private readonly SlantButton advancedButton = new();
     private readonly RoundedPanel compatibilityPanel = new();
-    private readonly ModernButton compatibilityButton = new();
+    private readonly SlantButton compatibilityButton = new();
 
     private bool gameRunning;
     private bool closeAfterGame;
@@ -70,193 +80,197 @@ public class LauncherForm : Form
 
     public LauncherForm()
     {
-        Text = "FIFA Street Launcher";
+        Text = "ReStreet Launcher";
         using (var icon = typeof(LauncherForm).Assembly.GetManifestResourceStream("fifastreet.ico")!)
             Icon = new Icon(icon);
         ClientSize = new Size(1250, 720);
         MinimumSize = new Size(1266, 759);
-        MaximumSize = new Size(1266, 960);
+        MaximumSize = new Size(1266, 1100);
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+        HandleCreated += (_, _) => StreetTheme.ApplyDarkTitleBar(Handle);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         BackColor = Bg;
         ForeColor = TextPrimary;
         Font = new Font("Segoe UI", 10F);
+        AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
 
         BuildInterface();
         WireEvents();
+        applyingProfile = true;     // loading values must not flip the profile to Custom
         LoadDefaults();
+        profileBox.SelectedIndex = 0;
         LoadSettings();
+        applyingProfile = false;
         UpdateGraphicsApiState();
         UpdateRefreshRates();
         UpdateSummary();
         UpdateStatus("Ready to play", true);
+        FitToScreen();
+    }
+
+    // Layout on an 8 px grid (design pixels, window 1250 x 720): left column margin 48; glass sheet
+    // 620..1202 x 32..688 (margin 48 / 32) with 24 px padding, so content spans x 644..1178 as two
+    // 259 px columns with a 16 px gap. Captions are 16 high, fields 36, buttons 40.
+    private const float DesignW = 1250f, DesignH = 720f;
+    private const int Left = 48;
+    private const int SheetX = 620, SheetY = 32, SheetW = 582, SheetH = 656, Pad = 24;
+    private const int ContentX = SheetX + Pad, ContentW = SheetW - 2 * Pad;
+    private const int ColW = 259, Col1 = ContentX, Col2 = ContentX + ColW + 16;
+    private const int PanelY = 720, PanelX = Left, PanelW = 1154;
+    private Bitmap? scene;
+    private Size sceneSize;
+
+    public Bitmap SceneBitmap { get { BuildScene(); return scene!; } }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        BuildScene();
+        using (var floor = new SolidBrush(StreetTheme.Asphalt)) e.Graphics.FillRectangle(floor, ClientRectangle);
+        e.Graphics.DrawImageUnscaled(scene!, 0, 0);
+    }
+
+    // Court backdrop, glass sheet, wordmark and credit, painted once per window size.
+    private void BuildScene()
+    {
+        float s = ClientSize.Width / DesignW;
+        var size = new Size(ClientSize.Width, (int)Math.Ceiling(DesignH * s));
+        if (scene != null && sceneSize == size) return;
+        scene?.Dispose();
+        sceneSize = size;
+        using var backdrop = StreetTheme.RenderBackdrop(size, DesignW, DesignH);
+        using var blurred = StreetTheme.Blur(backdrop, 10);
+        scene = new Bitmap(backdrop);
+        using var g = Graphics.FromImage(scene);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        g.ScaleTransform(s, s);
+
+        StreetTheme.DrawGlass(g, blurred, s, new RectangleF(SheetX, SheetY, SheetW, SheetH), 16);
+
+        using (var small = new Font(StreetTheme.CondensedFamily, 17, FontStyle.Bold, GraphicsUnit.Pixel))
+        using (var yellow = new SolidBrush(StreetTheme.Yellow))
+            StreetTheme.DrawSpaced(g, "FIFA STREET 2012 RECOMPILED", small, yellow, new PointF(Left, 56), 3.6f);
+        StreetTheme.DrawWordmark(g, "ReStreet", new PointF(Left, 88), 178, StreetTheme.Ink);
+        var tag = new RectangleF(Left, 240, 184, 36);
+        using (var bar = new SolidBrush(StreetTheme.Yellow)) g.FillPolygon(bar, StreetTheme.Slant(tag, 12));
+        using (var tagFont = new Font(StreetTheme.CondensedFamily, 18, FontStyle.Bold, GraphicsUnit.Pixel))
+        using (var dark = new SolidBrush(StreetTheme.YellowDark))
+            StreetTheme.DrawSpaced(g, "V1.0 · OFFLINE", tagFont, dark, new PointF(Left + 14, 246), 2.8f);
+
+        using var name = new Font("Segoe UI", 15, FontStyle.Regular, GraphicsUnit.Pixel);
+        StreetTheme.DrawLabelValue(g, "Ported by:", "SamuelitoDaVila", name, StreetTheme.Ink, StreetTheme.Ink, Left, 642);
+        StreetTheme.DrawLabelValue(g, "Contributions:", "Emran_Ahm3d", name, StreetTheme.Muted, StreetTheme.Muted, Left, 665);
+    }
+
+    // On a screen too small for the window (for example 1366 x 768 laptops) everything shrinks together:
+    // control sizes, fonts and the backdrop, keeping the layout intact.
+    private void FitToScreen()
+    {
+        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
+        int availableHeight = area.Height, availableWidth = area.Width;
+        if (int.TryParse(Environment.GetEnvironmentVariable("RESTREET_WORKAREA_HEIGHT"), out int forced)) availableHeight = forced;
+        int chromeHeight = Height - ClientSize.Height, chromeWidth = Width - ClientSize.Width;
+        float f = Math.Min((availableHeight - chromeHeight) / (float)ClientSize.Height, (availableWidth - chromeWidth) / (float)ClientSize.Width);
+        if (f >= 0.995f) return;
+        f = Math.Max(f, 0.55f);
+        SuspendLayout();
+        MinimumSize = MaximumSize = Size.Empty;
+        ScaleFonts(this, f);
+        StreetTheme.FitScale = f;
+        Scale(new SizeF(f, f));
+        foreach (var combo in Controls.OfType<GlassCombo>().Concat(compatibilityPanel.Controls.OfType<GlassCombo>()))
+            combo.ItemHeight = Math.Max(16, (int)(28 * f));
+        ResumeLayout(true);
+        MinimumSize = new Size(Width, Height);
+        MaximumSize = new Size(Width, Height + (int)(380 * f));
+        Invalidate(true);
+    }
+
+    private static void ScaleFonts(Control root, float f)
+    {
+        foreach (Control child in root.Controls)
+        {
+            child.Font = new Font(child.Font.FontFamily, child.Font.Size * f, child.Font.Style, child.Font.Unit);
+            ScaleFonts(child, f);
+        }
     }
 
     private void BuildInterface()
     {
         SuspendLayout();
 
-        var brand = new Label
+        // Row 0: profile and game language. Rows 1-4: two columns. Each block is 16 + 8 + 36 = 60 high.
+        const int row0 = 56, pitch = 84;
+        void Field(string label, ComboBox box, int x, int row)
         {
-            Text = "FIFA STREET",
-            Font = new Font("Segoe UI", 30F, FontStyle.Bold),
-            ForeColor = TextPrimary,
-            AutoSize = true,
-            Location = new Point(40, 30)
-        };
-        Controls.Add(brand);
+            int y = row0 + row * pitch;
+            AddFieldLabel(this, label, x, y);
+            ConfigureCombo(box, x, y + 24, ColW);
+            Controls.Add(box);
+        }
+        Field("Profile", profileBox, Col1, 0);
+        profileBox.AccessibleName = "Performance profile";
+        profileBox.Items.AddRange(ProfileNames);
+        profileBox.SelectedIndex = 0;
+        profileBox.SelectedIndexChanged += (_, _) => ApplyProfile();
+        postEffectBox.SelectedIndexChanged += (_, _) => MarkCustomProfile();
+        internalResolutionBox.SelectedIndexChanged += (_, _) => MarkCustomProfile();
+        readbackResolveBox.SelectedIndexChanged += (_, _) => MarkCustomProfile();
+        msaaBox.CheckedChanged += (_, _) => MarkCustomProfile();
+        occlusionQueryBox.CheckedChanged += (_, _) => MarkCustomProfile();
 
-        var subtitle = new Label
-        {
-            Text = "NATIVE PC RECOMP",
-            Font = new Font("Segoe UI Semibold", 9F),
-            ForeColor = Accent,
-            AutoSize = true,
-            Location = new Point(44, 84)
-        };
-        Controls.Add(subtitle);
-
-        var topLine = new Panel
-        {
-            BackColor = Accent,
-            Location = new Point(40, 112),
-            Size = new Size(860, 2)
-        };
-        Controls.Add(topLine);
-
-        var readyDot = new Label
-        {
-            Text = "●",
-            ForeColor = Accent,
-            AutoSize = true,
-            Font = new Font("Segoe UI", 10F, FontStyle.Bold),
-            Location = new Point(726, 45)
-        };
-        Controls.Add(readyDot);
-
-        statusLabel.AutoSize = true;
-        statusLabel.Font = new Font("Segoe UI Semibold", 9.5F);
-        statusLabel.ForeColor = TextSecondary;
-        statusLabel.Location = new Point(746, 46);
-        Controls.Add(statusLabel);
-
-        hardwareLabel.Text = "Detecting hardware...";
-        hardwareLabel.ForeColor = TextSecondary;
-        hardwareLabel.Font = new Font("Segoe UI", 9.5F);
-        hardwareLabel.AutoEllipsis = true;
-        hardwareLabel.TextAlign = ContentAlignment.MiddleRight;
-        hardwareLabel.Location = new Point(455, 72);
-        hardwareLabel.Size = new Size(445, 24);
-        Controls.Add(hardwareLabel);
-
-        var displayCard = CreateCard(new Point(40, 145), new Size(420, 360));
-        Controls.Add(displayCard);
-
-        AddSectionHeader(displayCard, "DISPLAY", "Display settings", 24, 20);
-
-        AddFieldLabel(displayCard, "Resolution", 24, 82);
-        ConfigureCombo(resolutionBox, 24, 106, 372);
-        displayCard.Controls.Add(resolutionBox);
-
-        AddFieldLabel(displayCard, "Refresh rate", 24, 150);
-        ConfigureCombo(refreshBox, 24, 174, 180);
-        displayCard.Controls.Add(refreshBox);
-
-        AddFieldLabel(displayCard, "Display mode", 216, 150);
-        ConfigureCombo(displayModeBox, 216, 174, 180);
-        displayCard.Controls.Add(displayModeBox);
-
-        AddFieldLabel(displayCard, "Monitor", 24, 218);
-        ConfigureCombo(monitorBox, 24, 242, 180);
-        displayCard.Controls.Add(monitorBox);
-        AddFieldLabel(displayCard, "Game language", 216, 218);
-        ConfigureCombo(gameLanguageBox, 216, 242, 180);
+        Field("Game language", gameLanguageBox, Col2, 0);
         gameLanguageBox.AccessibleName = "Game language";
-        displayCard.Controls.Add(gameLanguageBox);
+        Field("Resolution", resolutionBox, Col1, 1);
+        Field("Refresh rate", refreshBox, Col2, 1);
+        Field("Display mode", displayModeBox, Col1, 2);
+        Field("Monitor", monitorBox, Col2, 2);
+        Field("Graphics API", graphicsApiBox, Col1, 3);
+        Field("GPU", gpuBox, Col2, 3);
+        Field("Post-processing", postEffectBox, Col1, 4);
+        Field("Internal resolution", internalResolutionBox, Col2, 4);
 
-        ConfigureCheck(vsyncBox, "VSync", 24, 300);
+        // Switches in one row, 24 px apart.
         vsyncBox.CheckedChanged += (_, _) => UpdateGraphicsApiState();
         readbackMemexportBox.CheckedChanged += (_, _) => UpdateGraphicsApiState();
-        ConfigureCheck(vrrBox, "VRR / Tearing", 216, 300);
-        displayCard.Controls.Add(vsyncBox);
-        displayCard.Controls.Add(vrrBox);
+        int switchX = Col1;
+        foreach (var (box, text) in new (GlassToggle, string)[] { (vsyncBox, "VSync"), (vrrBox, "VRR / Tearing (D3D12)"), (msaaBox, "Native 2x MSAA") })
+        {
+            ConfigureCheck(box, text, switchX, 488);
+            Controls.Add(box);
+            switchX += box.GetPreferredSize(Size.Empty).Width + 24;
+        }
 
-        var graphicsCard = CreateCard(new Point(480, 145), new Size(420, 360));
-        Controls.Add(graphicsCard);
-
-        AddSectionHeader(graphicsCard, "GRAPHICS", "Quality and presentation", 24, 20);
-
-        AddFieldLabel(graphicsCard, "Graphics API", 24, 82);
-        ConfigureCombo(graphicsApiBox, 24, 106, 120);
-        graphicsCard.Controls.Add(graphicsApiBox);
-
-        AddFieldLabel(graphicsCard, "GPU", 156, 82);
-        ConfigureCombo(gpuBox, 156, 106, 240);
-        graphicsCard.Controls.Add(gpuBox);
-
-AddFieldLabel(graphicsCard, "Post-processing", 24, 150);
-ConfigureCombo(postEffectBox, 24, 174, 372);
-graphicsCard.Controls.Add(postEffectBox);
-
-AddFieldLabel(graphicsCard, "Internal Resolution", 24, 218);
-ConfigureCombo(internalResolutionBox, 24, 242, 372);
-graphicsCard.Controls.Add(internalResolutionBox);
-
-ConfigureCheck(msaaBox, "Native 2x MSAA", 24, 300);
-graphicsCard.Controls.Add(msaaBox);
-
-var fpsTitle = new Label
-{
-    Text = "FPS",
-    ForeColor = TextPrimary,
-    Font = new Font("Segoe UI Semibold", 9F),
-    AutoSize = true,
-    Location = new Point(24, 330)
-};
-graphicsCard.Controls.Add(fpsTitle);
-
-var fpsInfo = new Label
-{
-    Text = "Game frame rate; Hz selects display refresh",
-    ForeColor = TextSecondary,
-    Font = new Font("Segoe UI", 8.7F),
-    AutoSize = true,
-    Location = new Point(67, 331)
+        var tip = new ThemedLabel
+        {
+            Text = "Weaker PC? Pick the Performance profile.",
+            ForeColor = TextSecondary,
+            Font = StreetTheme.Body(10F),
+            Bounds = new Rectangle(ContentX, 536, ContentW, 40)
         };
-        graphicsCard.Controls.Add(fpsInfo);
+        Controls.Add(tip);
 
-        advancedButton.Text = "ADVANCED SETTINGS";
-        advancedButton.Location = new Point(40, 525);
-        advancedButton.Size = new Size(205, 40);
-        advancedButton.FillColor = SurfaceAlt;
-        advancedButton.HoverColor = Color.FromArgb(34, 41, 50);
-        advancedButton.BorderColor = Border;
-        advancedButton.ForeColor = TextPrimary;
-        advancedButton.Font = new Font("Segoe UI Semibold", 9F);
-        advancedButton.Radius = 10;
-        Controls.Add(advancedButton);
-
-        advancedChevron.Text = "⌄";
-        advancedChevron.ForeColor = TextSecondary;
-        advancedChevron.Font = new Font("Segoe UI", 13F, FontStyle.Bold);
-        advancedChevron.AutoSize = true;
-        advancedChevron.Location = new Point(219, 533);
-        advancedChevron.BackColor = Color.Transparent;
-        advancedChevron.Cursor = Cursors.Hand;
-        Controls.Add(advancedChevron);
-
-        compatibilityButton.Text = "COMPATIBILITY";
-        compatibilityButton.Location = new Point(255, 525);
-        compatibilityButton.Size = new Size(205, 40);
-        compatibilityButton.FillColor = SurfaceAlt;
-        compatibilityButton.HoverColor = Color.FromArgb(34, 41, 50);
-        compatibilityButton.BorderColor = Border;
-        compatibilityButton.ForeColor = TextPrimary;
-        compatibilityButton.Font = new Font("Segoe UI Semibold", 9F);
-        compatibilityButton.Radius = 10;
-        Controls.Add(compatibilityButton);
+        // Bottom row: four equal buttons, 126 wide with 10 px gaps (4 x 126 + 3 x 10 = 534).
+        void Chip(SlantButton button, string text, int index)
+        {
+            button.Kind = SlantKind.Glass;
+            button.Text = text;
+            button.Font = StreetTheme.Body(10F);
+            button.Bounds = new Rectangle(ContentX + index * 136, 624, 126, 40);
+            Controls.Add(button);
+        }
+        Chip(advancedButton, "Advanced", 0);
+        Chip(compatibilityButton, "Compatibility", 1);
+        var logsButton = new SlantButton();
+        logsButton.Click += (_, _) => OpenLogs();
+        Chip(logsButton, "Open logs", 2);
+        var folderButton = new SlantButton();
+        folderButton.Click += (_, _) => OpenGameFolder();
+        Chip(folderButton, "Open folder", 3);
 
         ConfigureAdvancedPanel();
         Controls.Add(advancedPanel);
@@ -264,78 +278,31 @@ var fpsInfo = new Label
         ConfigureCompatibilityPanel();
         Controls.Add(compatibilityPanel);
 
-        var logsButton = new ModernButton
-        {
-            Text = "OPEN LOGS",
-            Location = new Point(40, 590),
-            Size = new Size(150, 42),
-            FillColor = SurfaceAlt,
-            HoverColor = Color.FromArgb(34, 41, 50),
-            BorderColor = Border,
-            ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 9F),
-            Radius = 10
-        };
-        logsButton.Click += (_, _) => OpenLogs();
-        Controls.Add(logsButton);
+        hardwareLabel.Text = "Detecting hardware...";
+        hardwareLabel.ForeColor = TextSecondary;
+        hardwareLabel.Font = StreetTheme.Body(11F);
+        hardwareLabel.AutoEllipsis = true;
+        hardwareLabel.TextAlign = ContentAlignment.MiddleLeft;
+        hardwareLabel.Bounds = new Rectangle(Left, 312, 512, 24);
+        Controls.Add(hardwareLabel);
 
-        var folderButton = new ModernButton
-        {
-            Text = "OPEN FOLDER",
-            Location = new Point(750, 590),
-            Size = new Size(150, 42),
-            FillColor = SurfaceAlt,
-            HoverColor = Color.FromArgb(34, 41, 50),
-            BorderColor = Border,
-            ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 9F),
-            Radius = 10
-        };
-        folderButton.Click += (_, _) => OpenGameFolder();
-        Controls.Add(folderButton);
+        statusLabel.Font = StreetTheme.Body(11F, FontStyle.Bold);
+        statusLabel.ForeColor = TextSecondary;
+        statusLabel.TextAlign = ContentAlignment.MiddleLeft;
+        statusLabel.Bounds = new Rectangle(Left, 344, 512, 24);
+        Controls.Add(statusLabel);
 
-        var playButton = new ModernButton
+        var playButton = new SlantButton
         {
+            Kind = SlantKind.Primary,
             Text = "PLAY",
-            Location = new Point(280, 575),
-            Size = new Size(380, 72),
-            FillColor = Accent,
-            HoverColor = AccentHover,
-            BorderColor = Accent,
-            ForeColor = Color.FromArgb(9, 14, 8),
-            Font = new Font("Segoe UI", 18F, FontStyle.Bold),
-            Radius = 14
+            Font = StreetTheme.Condensed(36, FontStyle.Bold),
+            Bounds = new Rectangle(Left, 520, 480, 88)
         };
         playButton.Click += (_, _) => LaunchGame();
         Controls.Add(playButton);
-
-        var footer = new Label
-        {
-            Text = "FIFA Street • Native PC Recomp Launcher",
-            ForeColor = Color.FromArgb(92, 102, 116),
-            Font = new Font("Segoe UI", 8.5F),
-            AutoSize = true,
-            Location = new Point(40, 674)
-        };
-        Controls.Add(footer);
-
-        foreach (Control control in Controls) control.Left += 310;
-        using var resource = typeof(LauncherForm).Assembly.GetManifestResourceStream("cover.jpg")!;
-        using var cover = Image.FromStream(resource);
-        var artwork = new MessiPicture
-        {
-            Image = new Bitmap(cover), Bounds = new Rectangle(0, 0, 310, ClientSize.Height),
-            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left
-        };
-        Controls.Add(artwork);
-        FormClosed += (_, _) => artwork.Image?.Dispose();
-        var credit = new Label
-        {
-            Text = "PORTED BY: SAMUELITODAVILA\nContributions: Emran_Ahm3d", AutoSize = true,
-            ForeColor = Accent, Font = new Font("Segoe UI", 8.5F),
-            Location = new Point(730, 674), Tag = "credit"
-        };
-        Controls.Add(credit);
+        AcceptButton = playButton;
+        ActiveControl = playButton;
 
         ResumeLayout(false);
         PerformLayout();
@@ -343,104 +310,67 @@ var fpsInfo = new Label
 
     private void ConfigureAdvancedPanel()
     {
-        advancedPanel.Location = new Point(40, 575);
-        advancedPanel.Size = new Size(860, 126);
-        advancedPanel.FillColor = Surface;
-        advancedPanel.BorderColor = Border;
-        advancedPanel.Radius = 14;
+        advancedPanel.Bounds = new Rectangle(PanelX, PanelY, PanelW, 192);
+        advancedPanel.FillColor = StreetTheme.PanelFlat;
+        advancedPanel.BorderColor = Color.FromArgb(70, 72, 76);
+        advancedPanel.Radius = 16;
         advancedPanel.Visible = false;
 
-        AddFieldLabel(advancedPanel, "Game executable", 22, 18);
-        exePathBox.Location = new Point(22, 42);
-        exePathBox.Size = new Size(688, 27);
-        StyleTextBox(exePathBox);
-        advancedPanel.Controls.Add(exePathBox);
-
-        var browseExe = new ModernButton
+        const int browseW = 96, gap = 8, innerW = PanelW - 2 * Pad;
+        void PathRow(string label, TextBox box, int y, Action browse)
         {
-            Text = "BROWSE",
-            Location = new Point(724, 39),
-            Size = new Size(112, 34),
-            FillColor = SurfaceAlt,
-            HoverColor = Color.FromArgb(34, 41, 50),
-            BorderColor = Border,
-            ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 8.5F),
-            Radius = 8
-        };
-        browseExe.Click += (_, _) => BrowseExe();
-        advancedPanel.Controls.Add(browseExe);
-
-        AddFieldLabel(advancedPanel, "Game data folder", 22, 76);
-        gamePathBox.Location = new Point(22, 98);
-        gamePathBox.Size = new Size(688, 27);
-        StyleTextBox(gamePathBox);
-        advancedPanel.Controls.Add(gamePathBox);
-
-        var browseGame = new ModernButton
-        {
-            Text = "BROWSE",
-            Location = new Point(724, 95),
-            Size = new Size(112, 34),
-            FillColor = SurfaceAlt,
-            HoverColor = Color.FromArgb(34, 41, 50),
-            BorderColor = Border,
-            ForeColor = TextPrimary,
-            Font = new Font("Segoe UI Semibold", 8.5F),
-            Radius = 8
-        };
-        browseGame.Click += (_, _) => BrowseGame();
-        advancedPanel.Controls.Add(browseGame);
+            AddFieldLabel(advancedPanel, label, Pad, y);
+            advancedPanel.Controls.Add(new FieldFrame(box) { Bounds = new Rectangle(Pad, y + 24, innerW - browseW - gap, 40) });
+            box.Font = StreetTheme.Body(10F);
+            var button = new SlantButton { Kind = SlantKind.Glass, Text = "Browse", Font = StreetTheme.Body(10F), Bounds = new Rectangle(Pad + innerW - browseW, y + 24, browseW, 40) };
+            button.Click += (_, _) => browse();
+            advancedPanel.Controls.Add(button);
+        }
+        PathRow("Game executable", exePathBox, Pad, BrowseExe);
+        PathRow("Game data folder", gamePathBox, Pad + 80, BrowseGame);
     }
 
     private void ConfigureCompatibilityPanel()
     {
-        compatibilityPanel.Location = new Point(40, 575);
-        compatibilityPanel.Size = new Size(860, 182);
-        compatibilityPanel.FillColor = Surface;
-        compatibilityPanel.BorderColor = Border;
-        compatibilityPanel.Radius = 14;
+        compatibilityPanel.Bounds = new Rectangle(PanelX, PanelY, PanelW, 248);
+        compatibilityPanel.FillColor = StreetTheme.PanelFlat;
+        compatibilityPanel.BorderColor = Color.FromArgb(70, 72, 76);
+        compatibilityPanel.Radius = 16;
         compatibilityPanel.Visible = false;
 
-        AddSectionHeader(
-            compatibilityPanel,
-            "COMPATIBILITY",
-            "Renderer options for textures, lighting, black screens and stutter",
-            22,
-            15
-        );
+        compatibilityPanel.Controls.Add(new ThemedLabel
+        {
+            Text = "COMPATIBILITY", Font = StreetTheme.Condensed(14F, FontStyle.Bold), ForeColor = StreetTheme.Ink,
+            Bounds = new Rectangle(Pad, Pad, 400, 24)
+        });
+        compatibilityPanel.Controls.Add(new ThemedLabel
+        {
+            Text = "Renderer options for textures, lighting, black screens and stutter.", Font = StreetTheme.Body(10F), ForeColor = TextSecondary,
+            Bounds = new Rectangle(Pad, Pad + 28, 800, 20)
+        });
 
-        ConfigureCheck(readbackMemexportBox, "Memory Export", 260, 72);
-        ConfigureCheck(readbackMemexportFastBox, "Fast MemExport", 430, 72);
-        ConfigureCheck(clearMemoryPageStateBox, "Memory Page State", 615, 72);
-
-        compatibilityPanel.Controls.Add(readbackMemexportBox);
-        compatibilityPanel.Controls.Add(readbackMemexportFastBox);
-        compatibilityPanel.Controls.Add(clearMemoryPageStateBox);
-
-        ConfigureCheck(occlusionQueryBox, "Occlusion Queries", 260, 112);
-        ConfigureCheck(asyncShadersBox, "Async Shaders", 430, 112);
-
-        compatibilityPanel.Controls.Add(occlusionQueryBox);
-        compatibilityPanel.Controls.Add(asyncShadersBox);
-
-        ConfigureCheck(logFrameStatsBox, "Frame stats log", 615, 112);
-        compatibilityPanel.Controls.Add(logFrameStatsBox);
-
-        AddFieldLabel(compatibilityPanel, "Readback Resolve", 22, 52);
-        ConfigureCombo(readbackResolveBox, 22, 76, 210);
+        AddFieldLabel(compatibilityPanel, "Readback Resolve", Pad, 92);
+        ConfigureCombo(readbackResolveBox, Pad, 116, ColW);
         readbackResolveBox.AccessibleName = "Readback Resolve";
         compatibilityPanel.Controls.Add(readbackResolveBox);
 
-        var hint = new Label
+        // Switches on the same 275 px column pitch as the main sheet (x = 299, 574, 849).
+        int[] cols = { Pad + 275, Pad + 550, Pad + 825 };
+        ConfigureCheck(readbackMemexportBox, "Memory Export", cols[0], 120);
+        ConfigureCheck(readbackMemexportFastBox, "Fast MemExport", cols[1], 120);
+        ConfigureCheck(clearMemoryPageStateBox, "Memory Page State", cols[2], 120);
+        ConfigureCheck(occlusionQueryBox, "Occlusion Queries", cols[0], 162);
+        ConfigureCheck(asyncShadersBox, "Async Shaders", cols[1], 162);
+        ConfigureCheck(logFrameStatsBox, "Frame stats log", cols[2], 162);
+        foreach (var box in new[] { readbackMemexportBox, readbackMemexportFastBox, clearMemoryPageStateBox, occlusionQueryBox, asyncShadersBox, logFrameStatsBox })
+            compatibilityPanel.Controls.Add(box);
+
+        compatibilityPanel.Controls.Add(new ThemedLabel
         {
             Text = "Readback Resolve: Full is the validated mode. Some and Fast give more FPS but may cause graphical corruption.",
-            ForeColor = TextSecondary,
-            Font = new Font("Segoe UI", 8.5F),
-            AutoSize = true,
-            Location = new Point(22, 151)
-        };
-        compatibilityPanel.Controls.Add(hint);
+            Font = StreetTheme.Body(10F), ForeColor = TextSecondary,
+            Bounds = new Rectangle(Pad, 204, PanelW - 2 * Pad, 20)
+        });
     }
 
     private void WireEvents()
@@ -505,17 +435,18 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         advancedVisible = !advancedVisible;
         advancedPanel.Visible = advancedVisible;
         advancedChevron.Text = advancedVisible ? "⌃" : "⌄";
+        advancedButton.Active = advancedVisible;
+        compatibilityButton.Active = compatibilityVisible;
 
         if (advancedVisible)
         {
-            ClientSize = new Size(1250, 846);
-            advancedPanel.Location = new Point(350, 575);
-            MoveBottomControls(721, 703, 808);
+            float k = ClientSize.Width / DesignW;
+            ClientSize = new Size(ClientSize.Width, (int)Math.Round(944 * k));
+            advancedPanel.Location = new Point((int)Math.Round(PanelX * k), (int)Math.Round(PanelY * k));
         }
         else
         {
-            ClientSize = new Size(1250, 720);
-            MoveBottomControls(590, 575, 674);
+            ClientSize = new Size(ClientSize.Width, (int)Math.Round(720 * ClientSize.Width / DesignW));
         }
     }
 
@@ -530,17 +461,18 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
 
         compatibilityVisible = !compatibilityVisible;
         compatibilityPanel.Visible = compatibilityVisible;
+        compatibilityButton.Active = compatibilityVisible;
+        advancedButton.Active = advancedVisible;
 
         if (compatibilityVisible)
         {
-            ClientSize = new Size(1250, 902);
-            compatibilityPanel.Location = new Point(350, 575);
-            MoveBottomControls(777, 759, 864);
+            float k = ClientSize.Width / DesignW;
+            ClientSize = new Size(ClientSize.Width, (int)Math.Round(1000 * k));
+            compatibilityPanel.Location = new Point((int)Math.Round(PanelX * k), (int)Math.Round(PanelY * k));
         }
         else
         {
-            ClientSize = new Size(1250, 720);
-            MoveBottomControls(590, 575, 674);
+            ClientSize = new Size(ClientSize.Width, (int)Math.Round(720 * ClientSize.Width / DesignW));
         }
     }
 
@@ -556,7 +488,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
                     button.Top = playY;
             }
             else if (control is Label label &&
-                     (label.Text.StartsWith("FIFA Street •", StringComparison.Ordinal) || label.Tag as string == "credit"))
+                     (label.Text.StartsWith("ReStreet •", StringComparison.Ordinal) || label.Tag as string == "credit"))
             {
                 label.Top = footerY;
             }
@@ -600,38 +532,18 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
 
     private void AddFieldLabel(Control parent, string text, int x, int y)
     {
-        var label = new Label
+        parent.Controls.Add(new ThemedLabel
         {
-            Text = text,
+            Text = text.ToUpperInvariant(),
             ForeColor = TextSecondary,
-            Font = new Font("Segoe UI Semibold", 8.7F),
-            AutoSize = true,
-            Location = new Point(x, y)
-        };
-        parent.Controls.Add(label);
+            Font = StreetTheme.Condensed(9F, FontStyle.Bold),
+            Bounds = new Rectangle(x, y, ColW, 16)
+        });
     }
 
     private void ConfigureCombo(ComboBox box, int x, int y, int width)
     {
-        box.Location = new Point(x, y);
-        box.Size = new Size(width, 30);
-        box.DropDownStyle = ComboBoxStyle.DropDownList;
-        box.FlatStyle = FlatStyle.Flat;
-        box.BackColor = SurfaceAlt;
-        box.ForeColor = TextPrimary;
-        box.Font = new Font("Segoe UI", 9.7F);
-        box.DrawMode = DrawMode.OwnerDrawFixed;
-        box.ItemHeight = 22;
-        box.DrawItem += (_, e) =>
-        {
-            using var background = new SolidBrush(SurfaceAlt);
-            e.Graphics.FillRectangle(background, e.Bounds);
-            string text = e.Index >= 0 ? box.Items[e.Index]?.ToString() ?? "" : box.Text;
-            TextRenderer.DrawText(e.Graphics, text, box.Font, e.Bounds, TextPrimary,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
-            e.DrawFocusRectangle();
-        };
-        box.IntegralHeight = false;
+        box.Bounds = new Rectangle(x, y, width, 36);
         box.DropDownHeight = 240;
     }
 
@@ -642,7 +554,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         box.AutoSize = true;
         box.ForeColor = TextPrimary;
         box.BackColor = Color.Transparent;
-        box.Font = new Font("Segoe UI Semibold", 9.2F);
+        box.Font = StreetTheme.Body(10F);
         box.Cursor = Cursors.Hand;
     }
 
@@ -1024,6 +936,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         else
         {
             gpu = gpuBox.SelectedItem?.ToString() ?? "Automatic GPU";
+            if (gpu == "Automatic") gpu = "Automatic GPU";
 
             if (gpu.StartsWith("Adapter ", StringComparison.Ordinal))
             {
@@ -1037,7 +950,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         string hz = refreshBox.SelectedItem?.ToString() ?? "--";
 
         hardwareLabel.Text =
-            $"{gpu}   •   {resolution}   •   {hz} Hz";
+            $"{gpu}  ·  {resolution}  ·  {hz} Hz";
     }
 
     private void UpdateStatus(string text, bool ok)
@@ -1049,7 +962,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
     private async void LaunchGame()
     {
         if (gameRunning) {
-            ShowError("FIFA Street is already running.");
+            ShowError("ReStreet is already running.");
             return;
         }
         try
@@ -1103,7 +1016,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
                 MessageBox.Show(
                     $"The {graphicsApi} graphics backend is missing.\n\n" +
                     $"Expected files in:\n{backendDirectory}",
-                    "FIFA Street Launcher",
+                    "ReStreet Launcher",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
@@ -1289,7 +1202,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 $"AsyncShaders={asyncShadersBox.Checked}{Environment.NewLine}"
             );
 
-            UpdateStatus("Starting FIFA Street...", true);
+            UpdateStatus("Starting ReStreet...", true);
 
             ApplyMonitorRefresh(monitor, refresh, fullscreen ? width : 0, fullscreen ? height : 0);
             using var process = Process.Start(startInfo);
@@ -1312,7 +1225,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
             MessageBox.Show(
                 ex.Message,
-                "Error starting FIFA Street",
+                "Error starting ReStreet",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
@@ -1400,7 +1313,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
         MessageBox.Show(
             message,
-            "FIFA Street Launcher",
+            "ReStreet Launcher",
             MessageBoxButtons.OK,
             MessageBoxIcon.Error
         );
@@ -1469,6 +1382,46 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
         });
     }
 
+    // post effect: 0 none, 1 FXAA, 2 FXAA extreme; internal resolution index = scale - 1;
+    // readback: 0 full, 1 some (visually broken, never used), 2 fast
+    private void ApplyProfile()
+    {
+        if (applyingProfile)
+            return;
+        (int post, int scale, bool msaa, int readback, bool occlusion)? values = profileBox.SelectedIndex switch
+        {
+            0 => (1, 0, false, 0, true),    // Balanced: the shipped defaults
+            1 => (2, 1, true, 0, true),     // Quality: 2x internal resolution, FXAA extreme, MSAA
+            2 => (0, 0, false, 2, false),   // Performance: native resolution, no post, faster readback
+            _ => null
+        };
+        if (values == null)
+            return;
+        applyingProfile = true;
+        try
+        {
+            postEffectBox.SelectedIndex = values.Value.post;
+            internalResolutionBox.SelectedIndex = values.Value.scale;
+            msaaBox.Checked = values.Value.msaa;
+            readbackResolveBox.SelectedIndex = values.Value.readback;
+            occlusionQueryBox.Checked = values.Value.occlusion;
+        }
+        finally
+        {
+            applyingProfile = false;
+        }
+    }
+
+    private void MarkCustomProfile()
+    {
+        if (!applyingProfile && profileBox.SelectedIndex != ProfileNames.Length - 1)
+        {
+            applyingProfile = true;
+            profileBox.SelectedIndex = ProfileNames.Length - 1;
+            applyingProfile = false;
+        }
+    }
+
     private void SaveSettings()
     {
         try
@@ -1496,7 +1449,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 AsyncShaders = asyncShadersBox.Checked,
                 VSync = vsyncBox.Checked,
                 VRR = vrrBox.Checked,
-                MSAA = msaaBox.Checked
+                MSAA = msaaBox.Checked,
+                Profile = profileBox.SelectedIndex
             };
 
             string json = JsonSerializer.Serialize(
@@ -1590,6 +1544,8 @@ if (settings.InternalResolutionScale >= 0 &&
             vsyncBox.Checked = settings.VSync;
             vrrBox.Checked = settings.VRR;
             msaaBox.Checked = settings.MSAA;
+            if (settings.Profile >= 0 && settings.Profile < profileBox.Items.Count)
+                profileBox.SelectedIndex = settings.Profile;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -1674,9 +1630,10 @@ public class LauncherSettings
     public bool VSync { get; set; } = false;
     public bool VRR { get; set; } = true;
     public bool MSAA { get; set; } = false;
+    public int Profile { get; set; } = 0;
 }
 
-public class RoundedPanel : Panel
+public class RoundedPanel : Panel, IFlatPanel
 {
     public Color FillColor { get; set; } = Color.FromArgb(18, 22, 28);
     public Color BorderColor { get; set; } = Color.FromArgb(48, 57, 68);
