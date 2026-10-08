@@ -193,6 +193,30 @@ index 696ff48..a2bdd15 100644
      return !submission_open_ && submissions_in_flight_fences_.empty();
    }
    // Keep primary-buffer-end submit behavior aligned with D3D12: only submit
+diff --git a/include/rex/input/guide_capture.h b/include/rex/input/guide_capture.h
+new file mode 100644
+index 0000000..4d908d5
+--- /dev/null
++++ b/include/rex/input/guide_capture.h
+@@ -0,0 +1,18 @@
++#pragma once
++// While the (re-created) Xbox Guide is open it owns the pad: the title sees a
++// neutral controller and the guide receives the button presses instead.
++
++#include <cstdint>
++
++namespace rex::input {
++
++void SetGuideCapture(bool capture);
++bool GuideCaptureActive();
++// Buttons (XINPUT_GAMEPAD_* bits) newly pressed since the last call.
++uint32_t TakeGuidePresses();
++
++// While watching, a Back button press (edge) is recorded for TakeBackPress().
++void SetBackWatch(bool watch);
++bool TakeBackPress();
++
++}  // namespace rex::input
 diff --git a/include/rex/input/input_system.h b/include/rex/input/input_system.h
 index 1cb3faa..5529d0c 100644
 --- a/include/rex/input/input_system.h
@@ -227,6 +251,19 @@ index b3947e0..21202c7 100644
    kCount  // sentinel -- must be last
  };
  
+diff --git a/include/rex/rex_app.h b/include/rex/rex_app.h
+index 1f52480..4b169cb 100644
+--- a/include/rex/rex_app.h
++++ b/include/rex/rex_app.h
+@@ -134,7 +134,7 @@ class ReXApp : public ui::WindowedApp, public ui::WindowListener, public ui::Win
+   /// Called from the ImGui drawer's Initialize() after the default font is
+   /// registered and before the atlas is built. Override to add additional
+   /// fonts via AddFontFromMemoryTTF() or similar.
+-  virtual void OnConfigureFonts(ImFontAtlas* atlas) { (void)atlas; }
++  virtual void OnConfigureFonts(ImFontAtlas* atlas);
+ 
+   /// Called from the ImGui drawer's Initialize() after the SDK defaults have
+   /// been applied. `imgui_style` is the live global ImGuiStyle: patch fields,
 diff --git a/include/rex/stream.h b/include/rex/stream.h
 index 07eb5ea..ae8d43e 100644
 --- a/include/rex/stream.h
@@ -241,6 +278,28 @@ index 07eb5ea..ae8d43e 100644
  
    size_t Copy(uint8_t* dest_buffer, size_t num_bits);
  
+diff --git a/include/rex/ui/guide_font.h b/include/rex/ui/guide_font.h
+new file mode 100644
+index 0000000..3a4c284
+--- /dev/null
++++ b/include/rex/ui/guide_font.h
+@@ -0,0 +1,16 @@
++#pragma once
++// Fonts of the re-created Xbox Guide / extra menu entries. They are the game's own
++// UI fonts, read from its data0.big when the ImGui atlas is built.
++
++#include <filesystem>
++
++struct ImFont;
++struct ImFontAtlas;
++
++namespace rex::ui {
++extern ImFont* g_guide_font;        // fs4_cn_bold: menu items, headings
++extern ImFont* g_guide_font_light;  // fs4_cn_regular: hint rows
++
++// Adds the game's fonts to `atlas` (no-op if the archive is missing).
++void LoadGameUiFonts(ImFontAtlas* atlas, const std::filesystem::path& game_data_root);
++}  // namespace rex::ui
 diff --git a/include/rex/ui/overlay/debug_overlay.h b/include/rex/ui/overlay/debug_overlay.h
 index e15e410..fa838ff 100644
 --- a/include/rex/ui/overlay/debug_overlay.h
@@ -289,6 +348,79 @@ index afb4a30..1cfc84f 100644
  
    // Ordered by the Z order, and then by the time of addition.
    // Note: All the iteration logic involving this Z ordering must be the same as
+diff --git a/include/rex/ui/vulkan/fence_wait_timing.h b/include/rex/ui/vulkan/fence_wait_timing.h
+new file mode 100644
+index 0000000..97f4ba6
+--- /dev/null
++++ b/include/rex/ui/vulkan/fence_wait_timing.h
+@@ -0,0 +1,67 @@
++#pragma once
++
++#include <algorithm>
++#include <chrono>
++#include <rex/cvar.h>
++#include <rex/logging.h>
++
++namespace rex::ui::vulkan {
++
++// Observe existing CPU fence waits without inserting any GPU operations.
++class FenceWaitTiming {
++ public:
++  enum class Reason { Other, Resolve, Memexport, FrameReuse, ResourceReuse, Occlusion, OutputDescriptors, IntermediateImage, PaintPipeline, AcquireImage, Count };
++  FenceWaitTiming(const char* role, const void* tracker,
++                  Reason reason = Reason::Other, uint64_t fences = 1)
++      : role_(role), tracker_(tracker), reason_(reason), fences_(fences) {
++    // This diagnostic setting is selected before workers start, not hot-reloaded.
++    static thread_local const bool enabled = REXCVAR_QUERY(bool, vulkan_log_fence_waits);
++    enabled_ = enabled;
++    if (enabled_) start_ = Clock::now();
++  }
++  ~FenceWaitTiming() {
++    if (!enabled_) return;
++    const auto now = Clock::now();
++    const double ms = std::chrono::duration<double, std::milli>(now - start_).count();
++    struct Stats {
++      Clock::time_point start = Clock::now();
++      uint64_t calls = 0, over_8ms = 0, fences = 0;
++      double total = 0, maximum = 0;
++    };
++    static thread_local Stats all_stats[2][size_t(Reason::Count)];
++    const size_t role_index = role_[0] == 'g' ? 0 : 1;
++    Stats& stats = all_stats[role_index][size_t(reason_)];
++    ++stats.calls;
++    stats.fences += fences_;
++    stats.over_8ms += ms > 8.0;
++    stats.total += ms;
++    stats.maximum = std::max(stats.maximum, ms);
++    static thread_local Clock::time_point interval_start = Clock::now();
++    if (now - interval_start < std::chrono::seconds(5)) return;
++    constexpr const char* names[] = {"other", "resolve", "memexport", "frame_reuse",
++                                    "resource_reuse", "occlusion", "output_descriptors",
++                                    "intermediate_image", "paint_pipeline", "acquire_image"};
++    for (size_t role = 0; role < 2; ++role) {
++      for (size_t reason = 0; reason < size_t(Reason::Count); ++reason) {
++        Stats& entry = all_stats[role][reason];
++        if (!entry.calls) continue;
++        REXLOG_INFO("VulkanFenceWait: role={} reason={} calls={} fences={} "
++                    "total={:.3f}ms max={:.3f}ms over8ms={}",
++                    role == 0 ? "guest" : "presenter", names[reason], entry.calls,
++                    entry.fences, entry.total, entry.maximum, entry.over_8ms);
++        entry = Stats{};
++      }
++    }
++    interval_start = now;
++  }
++ private:
++  using Clock = std::chrono::steady_clock;
++  const char* role_;
++  const void* tracker_;
++  Reason reason_;
++  uint64_t fences_;
++  bool enabled_ = false;
++  Clock::time_point start_{};
++};
++
++}  // namespace rex::ui::vulkan
 diff --git a/include/rex/ui/vulkan/functions/device_1_0.inc b/include/rex/ui/vulkan/functions/device_1_0.inc
 index aa55a4a..ee502f0 100644
 --- a/include/rex/ui/vulkan/functions/device_1_0.inc
@@ -370,6 +502,57 @@ index 505b599..3eda4cb 100644
    bool AwaitAllSubmissionsCompletion() {
      return AwaitSubmissionCompletion(submission_current_ - 1);
    }
+diff --git a/resources/templates/codegen/_indirect_call.inja b/resources/templates/codegen/_indirect_call.inja
+index d4b1830..127e573 100644
+--- a/resources/templates/codegen/_indirect_call.inja
++++ b/resources/templates/codegen/_indirect_call.inja
+@@ -1,12 +1,7 @@
+ //=============================================================================
+ // Indirect Call Dispatch
+-//
+-// REX_LOOKUP_FUNC indexes into the per-module dispatch table at
+-// IMAGE_BASE + IMAGE_SIZE. REX_CALL_INDIRECT_FUNC bounds-checks the target
+-// against the caller's [REX_CODE_BASE, REX_CODE_BASE + REX_CODE_SIZE +
+-// REX_THUNK_RESERVE_SIZE) range; out-of-bounds targets and in-bounds
+-// unregistered slots fall back to rex::runtime::ResolveIndirectFunction,
+-// which queries the global FunctionDispatcher across every loaded module.
++// Resolve through the runtime: function tables are independent of XEX images.
++// The dispatcher handles calls across all loaded modules.
+ //=============================================================================
+ 
+ #ifdef REXGLUE_ENABLE_PROFILING
+@@ -17,22 +12,14 @@
+ #endif
+ 
+ #define REX_LOOKUP_FUNC(x, y) \
+-  (*(PPCFunc**)(x + REX_IMAGE_BASE + REX_IMAGE_SIZE + (u64(u32(y) - REX_CODE_BASE) * 2)))
++  rex::runtime::ResolveIndirectFunction(static_cast<uint32_t>(y))
+ 
+-#define REX_CALL_INDIRECT_FUNC(x)                                                          \
+-  do {                                                                                     \
+-    REX_PROFILE_INDIRECT_DISPATCH();                                                       \
+-    uint32_t rex_indirect_target_ = (uint32_t)(x);                                         \
+-    PPCFunc* rex_indirect_func_;                                                           \
+-    if ((uint32_t)(rex_indirect_target_ - REX_CODE_BASE) <                                 \
+-        REX_CODE_SIZE + REX_THUNK_RESERVE_SIZE) [[likely]] {                               \
+-      rex_indirect_func_ = REX_LOOKUP_FUNC(base, rex_indirect_target_);                    \
+-    } else {                                                                               \
+-      rex_indirect_func_ = nullptr;                                                        \
+-    }                                                                                      \
+-    if (!rex_indirect_func_) [[unlikely]] {                                                \
+-      ctx.last_indirect_target = rex_indirect_target_;                                     \
+-      rex_indirect_func_ = rex::runtime::ResolveIndirectFunction(rex_indirect_target_);    \
+-    }                                                                                      \
+-    rex_indirect_func_(ctx, base);                                                         \
++#define REX_CALL_INDIRECT_FUNC(x)                                      \
++  do {                                                                \
++    REX_PROFILE_INDIRECT_DISPATCH();                                   \
++    uint32_t rex_indirect_target_ = static_cast<uint32_t>(x);           \
++    ctx.last_indirect_target = rex_indirect_target_;                    \
++    PPCFunc* rex_indirect_func_ =                                      \
++        REX_LOOKUP_FUNC(base, rex_indirect_target_);                    \
++    rex_indirect_func_(ctx, base);                                     \
+   } while (0)
 diff --git a/src/codegen/builders/context.cpp b/src/codegen/builders/context.cpp
 index f78e0d8..1d303db 100644
 --- a/src/codegen/builders/context.cpp
@@ -1944,7 +2127,7 @@ index 2be0e8e..05b54f5 100644
    // Create a new bindless or cached descriptor if supported.
    D3D12_SHADER_RESOURCE_VIEW_DESC desc = {};
 diff --git a/src/graphics/graphics_system.cpp b/src/graphics/graphics_system.cpp
-index 8f2fcb0..d3cf8f3 100644
+index 8f2fcb0..3c584e9 100644
 --- a/src/graphics/graphics_system.cpp
 +++ b/src/graphics/graphics_system.cpp
 @@ -1,3 +1,4 @@
@@ -1952,7 +2135,22 @@ index 8f2fcb0..d3cf8f3 100644
  /**
   ******************************************************************************
   * Xenia : Xbox 360 Emulator Research Project                                 *
-@@ -31,6 +32,10 @@
+@@ -14,12 +15,14 @@
+ #include <algorithm>
+ #include <cctype>
+ #include <cstdint>
++#include <filesystem>
+ #include <functional>
+ #include <memory>
+ #include <mutex>
+ #include <utility>
+ 
+ #include <rex/cvar.h>
++#include <rex/filesystem.h>
+ #include <rex/graphics/command_processor.h>
+ #include <rex/graphics/flags.h>
+ #include <rex/kernel/xboxkrnl/video.h>
+@@ -31,6 +34,10 @@
  #include <rex/ui/window.h>
  #include <rex/ui/windowed_app_context.h>
  
@@ -1963,7 +2161,7 @@ index 8f2fcb0..d3cf8f3 100644
  REXCVAR_DEFINE_STRING(swap_post_effect, "none", "GPU", "Swap post effect: none, fxaa, fxaa_extreme")
      .allowed({"none", "fxaa", "fxaa_extreme"})
      .lifecycle(rex::cvar::Lifecycle::kRequiresRestart);
-@@ -39,6 +44,9 @@ REXCVAR_DEFINE_BOOL(store_shaders, true, "GPU",
+@@ -39,6 +46,9 @@ REXCVAR_DEFINE_BOOL(store_shaders, true, "GPU",
                      "Store shaders persistently and load them when loading games to avoid "
                      "runtime spikes and freezes when playing the game not for the first time.");
  
@@ -1973,7 +2171,7 @@ index 8f2fcb0..d3cf8f3 100644
  namespace {
  
  rex::graphics::CommandProcessor::SwapPostEffect ParseSwapPostEffect(
-@@ -157,15 +165,75 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
+@@ -157,15 +167,75 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
          uint64_t vsync_interval_ticks =
              std::max(uint64_t(1), uint64_t(double(guest_tick_frequency) / refresh_rate_hz));
          uint64_t no_vsync_interval_ticks = std::max(uint64_t(1), guest_tick_frequency / 1000);
@@ -2050,7 +2248,7 @@ index 8f2fcb0..d3cf8f3 100644
            rex::thread::Sleep(std::chrono::milliseconds(1));
          }
          return 0;
-@@ -180,8 +248,8 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
+@@ -180,8 +250,8 @@ X_STATUS GraphicsSystem::SetupGuestGpu(runtime::FunctionDispatcher* function_dis
  
  void GraphicsSystem::Shutdown() {
    if (command_processor_) {
@@ -2060,7 +2258,7 @@ index 8f2fcb0..d3cf8f3 100644
    }
  
    if (vsync_worker_thread_) {
-@@ -190,6 +258,8 @@ void GraphicsSystem::Shutdown() {
+@@ -190,6 +260,8 @@ void GraphicsSystem::Shutdown() {
      vsync_worker_thread_.reset();
    }
  
@@ -2069,6 +2267,31 @@ index 8f2fcb0..d3cf8f3 100644
    if (presenter_) {
      if (app_context_) {
        app_context_->CallInUIThreadSynchronous([this]() { presenter_.reset(); });
+@@ -344,6 +416,24 @@ void GraphicsSystem::InitializeShaderStorage(const std::filesystem::path& cache_
+   if (!REXCVAR_GET(store_shaders)) {
+     return;
+   }
++  // First run: start from the pipelines/shaders shipped next to the executable (shader-seed/), so
++  // the first matches do not compile everything from scratch. Files the player already has are
++  // never touched.
++  {
++    std::error_code ec;
++    const auto seed = rex::filesystem::GetExecutableFolder() / "shader-seed";
++    const auto target = cache_root / "shaders" / "shareable";
++    if (std::filesystem::is_directory(seed, ec)) {
++      std::filesystem::create_directories(target, ec);
++      for (const auto& entry : std::filesystem::directory_iterator(seed, ec)) {
++        if (!entry.is_regular_file(ec)) continue;
++        const auto destination = target / entry.path().filename();
++        if (std::filesystem::exists(destination, ec)) continue;
++        std::filesystem::copy_file(entry.path(), destination, ec);
++        REXGPU_INFO("Shader cache seeded: {}", entry.path().filename().string());
++      }
++    }
++  }
+   if (blocking) {
+     if (command_processor_->is_paused()) {
+       // Safe to run on any thread while the command processor is paused, no
 diff --git a/src/graphics/pipeline/shader/dxbc_translator_fetch.cpp b/src/graphics/pipeline/shader/dxbc_translator_fetch.cpp
 index 31de175..267f7da 100644
 --- a/src/graphics/pipeline/shader/dxbc_translator_fetch.cpp
@@ -2102,6 +2325,133 @@ index 31de175..267f7da 100644
        case xenos::FetchOpDimension::kCube:
          a_.OpUBFE(dxbc::Dest::R(size_and_is_3d_temp, size_needed_components),
                    dxbc::Src::LU(13, 13, 0, 0), dxbc::Src::LU(0, 13, 0, 0),
+diff --git a/src/graphics/shaders/bytecode/d3d12_5_1/float24_round_ps_position_only.h b/src/graphics/shaders/bytecode/d3d12_5_1/float24_round_ps_position_only.h
+new file mode 100644
+index 0000000..201959d
+--- /dev/null
++++ b/src/graphics/shaders/bytecode/d3d12_5_1/float24_round_ps_position_only.h
+@@ -0,0 +1,73 @@
++// Derived from float24_round_ps.h: identical depth instructions, SV_Position at v0.
++// Generated by work/generate-position-only-depth.py; original licensing applies.
++const BYTE float24_round_ps_position_only[] = {
++  68, 88, 66, 67, 162, 99, 171, 178, 104, 88, 180, 227, 99, 114, 31, 75, 42, 220, 126, 82,
++  1, 0, 0, 0, 100, 5, 0, 0, 5, 0, 0, 0, 52, 0, 0, 0, 160, 0, 0, 0,
++  212, 0, 0, 0, 8, 1, 0, 0, 200, 4, 0, 0, 82, 68, 69, 70, 100, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 1, 5, 255, 255,
++  0, 5, 0, 0, 60, 0, 0, 0, 19, 19, 68, 37, 60, 0, 0, 0, 24, 0, 0, 0,
++  40, 0, 0, 0, 40, 0, 0, 0, 36, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0,
++  77, 105, 99, 114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 72, 76, 83, 76, 32, 83,
++  104, 97, 100, 101, 114, 32, 67, 111, 109, 112, 105, 108, 101, 114, 32, 49, 48, 46, 49, 0,
++  73, 83, 71, 78, 44, 0, 0, 0, 1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0,
++  0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 15, 4, 0, 0,
++  83, 86, 95, 80, 111, 115, 105, 116, 105, 111, 110, 0, 79, 83, 71, 78, 44, 0, 0, 0,
++  1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  3, 0, 0, 0, 255, 255, 255, 255, 1, 14, 0, 0, 83, 86, 95, 68, 101, 112, 116, 104,
++  0, 171, 171, 171, 83, 72, 69, 88, 184, 3, 0, 0, 81, 0, 0, 0, 238, 0, 0, 0,
++  106, 8, 0, 1, 100, 56, 0, 4, 66, 16, 16, 0, 0, 0, 0, 0, 1, 0, 0, 0,
++  101, 0, 0, 2, 1, 192, 0, 0, 104, 0, 0, 2, 2, 0, 0, 0, 56, 32, 8, 7,
++  18, 0, 16, 0, 0, 0, 0, 0, 42, 16, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
++  0, 0, 0, 64, 80, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
++  255, 255, 255, 127, 10, 0, 16, 0, 0, 0, 0, 0, 1, 0, 8, 7, 18, 0, 16, 0,
++  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
++  84, 0, 8, 7, 18, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0,
++  1, 64, 0, 0, 248, 255, 255, 63, 140, 0, 16, 11, 34, 0, 16, 0, 0, 0, 0, 0,
++  1, 64, 0, 0, 23, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0, 10, 0, 16, 0,
++  0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 0, 85, 0, 32, 7, 66, 0, 16, 0,
++  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 23, 0, 0, 0,
++  30, 0, 32, 8, 66, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 128, 65, 0, 0, 0,
++  0, 0, 0, 0, 1, 64, 0, 0, 113, 0, 0, 0, 84, 0, 32, 7, 66, 0, 16, 0,
++  0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 24, 0, 0, 0,
++  85, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
++  42, 0, 16, 0, 0, 0, 0, 0, 79, 0, 32, 7, 66, 0, 16, 0, 0, 0, 0, 0,
++  10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 56, 30, 0, 8, 7,
++  18, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
++  0, 0, 0, 200, 55, 0, 8, 9, 18, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0,
++  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0,
++  138, 0, 16, 9, 34, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 1, 0, 0, 0,
++  1, 64, 0, 0, 3, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 30, 0, 8, 7,
++  18, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0,
++  0, 0, 0, 0, 30, 0, 8, 7, 18, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0,
++  0, 0, 0, 0, 1, 64, 0, 0, 3, 0, 0, 0, 138, 0, 56, 15, 114, 0, 16, 0,
++  0, 0, 0, 0, 2, 64, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 4, 0, 0, 0,
++  0, 0, 0, 0, 2, 64, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 23, 0, 0, 0,
++  0, 0, 0, 0, 6, 0, 16, 0, 0, 0, 0, 0, 135, 0, 64, 5, 130, 0, 16, 0,
++  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 30, 0, 64, 7, 130, 0, 16, 0,
++  0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 245, 255, 255, 255,
++  55, 0, 64, 9, 130, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
++  58, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 21, 0, 0, 0, 30, 0, 8, 8,
++  18, 0, 16, 0, 1, 0, 0, 0, 58, 0, 16, 128, 65, 0, 0, 0, 0, 0, 0, 0,
++  1, 64, 0, 0, 1, 0, 0, 0, 55, 0, 8, 9, 18, 0, 16, 0, 1, 0, 0, 0,
++  42, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0,
++  1, 0, 0, 0, 41, 0, 64, 7, 130, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0,
++  0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 1, 0, 64, 7, 130, 0, 16, 0,
++  0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 255, 255, 15, 0,
++  55, 0, 16, 9, 34, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0,
++  26, 0, 16, 0, 0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 41, 0, 32, 7,
++  66, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 1, 0, 0, 0, 1, 64, 0, 0,
++  23, 0, 0, 0, 30, 0, 32, 7, 66, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0,
++  0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 55, 41, 0, 16, 7, 34, 0, 16, 0,
++  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 3, 0, 0, 0,
++  30, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0,
++  26, 0, 16, 0, 0, 0, 0, 0, 55, 0, 8, 8, 1, 192, 0, 0, 10, 0, 16, 0,
++  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0,
++  62, 0, 0, 1, 83, 84, 65, 84, 148, 0, 0, 0, 30, 0, 0, 0, 2, 0, 0, 0,
++  0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0,
++  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++};
+diff --git a/src/graphics/shaders/bytecode/d3d12_5_1/float24_truncate_ps_position_only.h b/src/graphics/shaders/bytecode/d3d12_5_1/float24_truncate_ps_position_only.h
+new file mode 100644
+index 0000000..fb3ad69
+--- /dev/null
++++ b/src/graphics/shaders/bytecode/d3d12_5_1/float24_truncate_ps_position_only.h
+@@ -0,0 +1,42 @@
++// Derived from float24_truncate_ps.h: identical depth instructions, SV_Position at v0.
++// Generated by work/generate-position-only-depth.py; original licensing applies.
++const BYTE float24_truncate_ps_position_only[] = {
++  68, 88, 66, 67, 58, 223, 9, 93, 150, 73, 58, 100, 233, 164, 57, 28, 8, 192, 95, 196,
++  1, 0, 0, 0, 232, 2, 0, 0, 5, 0, 0, 0, 52, 0, 0, 0, 160, 0, 0, 0,
++  212, 0, 0, 0, 16, 1, 0, 0, 76, 2, 0, 0, 82, 68, 69, 70, 100, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 1, 5, 255, 255,
++  0, 5, 0, 0, 60, 0, 0, 0, 19, 19, 68, 37, 60, 0, 0, 0, 24, 0, 0, 0,
++  40, 0, 0, 0, 40, 0, 0, 0, 36, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0,
++  77, 105, 99, 114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 72, 76, 83, 76, 32, 83,
++  104, 97, 100, 101, 114, 32, 67, 111, 109, 112, 105, 108, 101, 114, 32, 49, 48, 46, 49, 0,
++  73, 83, 71, 78, 44, 0, 0, 0, 1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0,
++  0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 15, 4, 0, 0,
++  83, 86, 95, 80, 111, 115, 105, 116, 105, 111, 110, 0, 79, 83, 71, 78, 52, 0, 0, 0,
++  1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  3, 0, 0, 0, 255, 255, 255, 255, 1, 14, 0, 0, 83, 86, 95, 68, 101, 112, 116, 104,
++  76, 101, 115, 115, 69, 113, 117, 97, 108, 0, 171, 171, 83, 72, 69, 88, 52, 1, 0, 0,
++  81, 0, 0, 0, 77, 0, 0, 0, 106, 8, 0, 1, 100, 56, 0, 4, 66, 16, 16, 0,
++  0, 0, 0, 0, 1, 0, 0, 0, 101, 0, 0, 2, 1, 112, 2, 0, 104, 0, 0, 2,
++  1, 0, 0, 0, 56, 32, 8, 7, 18, 0, 16, 0, 0, 0, 0, 0, 42, 16, 16, 0,
++  0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 64, 80, 0, 16, 7, 34, 0, 16, 0,
++  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 46,
++  31, 0, 4, 3, 26, 0, 16, 0, 0, 0, 0, 0, 138, 0, 16, 9, 34, 0, 16, 0,
++  0, 0, 0, 0, 1, 64, 0, 0, 8, 0, 0, 0, 1, 64, 0, 0, 23, 0, 0, 0,
++  10, 0, 16, 0, 0, 0, 0, 0, 30, 0, 16, 8, 34, 0, 16, 0, 0, 0, 0, 0,
++  26, 0, 16, 128, 65, 0, 0, 0, 0, 0, 0, 0, 1, 64, 0, 0, 116, 0, 0, 0,
++  36, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
++  1, 64, 0, 0, 3, 0, 0, 0, 140, 0, 8, 11, 18, 0, 16, 0, 0, 0, 0, 0,
++  26, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0, 1, 64, 0, 0,
++  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 18, 0, 0, 1, 54, 0, 8, 5,
++  18, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0, 21, 0, 0, 1,
++  56, 0, 8, 6, 1, 112, 2, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
++  0, 0, 0, 63, 62, 0, 0, 1, 83, 84, 65, 84, 148, 0, 0, 0, 12, 0, 0, 0,
++  1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0,
++  1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++  0, 0, 0, 0,
++};
 diff --git a/src/graphics/util/draw_extent_estimator.cpp b/src/graphics/util/draw_extent_estimator.cpp
 index 3027dc8..54f77a9 100644
 --- a/src/graphics/util/draw_extent_estimator.cpp
@@ -2693,10 +3043,24 @@ index ecbd940..11751c9 100644
      const HostFormatPair& host_format_pair = vulkan_texture_cache.GetHostFormatPair(key());
      VkFormat wrapper_format = host_format_pair.format_unsigned.format;
 diff --git a/src/input/input_system.cpp b/src/input/input_system.cpp
-index 813bb1c..39a6222 100644
+index 813bb1c..7867984 100644
 --- a/src/input/input_system.cpp
 +++ b/src/input/input_system.cpp
-@@ -48,6 +48,7 @@ X_STATUS InputSystem::Setup() {
+@@ -10,11 +10,13 @@
+  */
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <cmath>
+ 
+ #include <rex/dbg.h>
+ #include <rex/input/device_assignment.h>
+ #include <rex/input/flags.h>
++#include <rex/input/guide_capture.h>
+ #include <rex/input/input_driver.h>
+ #include <rex/input/input_system.h>
+ #include <rex/input/mnk/mnk_input_driver.h>
+@@ -48,6 +50,7 @@ X_STATUS InputSystem::Setup() {
  }
  
  void InputSystem::Shutdown() {
@@ -2704,7 +3068,7 @@ index 813bb1c..39a6222 100644
    // device_owners_ holds raw driver pointers.
    devices_.clear();
    device_owners_.clear();
-@@ -187,6 +188,7 @@ const DeviceInfo* InputSystem::DeviceInfoFor(DeviceId id) const {
+@@ -187,6 +190,7 @@ const DeviceInfo* InputSystem::DeviceInfoFor(DeviceId id) const {
  X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
                                        X_INPUT_CAPABILITIES* out_caps) {
    SCOPE_profile_cpu_f("hid");
@@ -2712,15 +3076,59 @@ index 813bb1c..39a6222 100644
    if (!out_caps || !assignment_) {
      return X_ERROR_DEVICE_NOT_CONNECTED;
    }
-@@ -214,6 +216,7 @@ X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
+@@ -212,8 +216,23 @@ X_RESULT InputSystem::GetCapabilities(uint32_t user_index, uint32_t flags,
+   return driver->GetDeviceCapabilities(chosen, flags, out_caps);
+ }
  
++namespace {
++std::atomic<bool> g_guide_capture{false};
++std::atomic<uint32_t> g_guide_presses{0};
++uint16_t g_guide_prev_buttons = 0;
++std::atomic<bool> g_back_watch{false};
++std::atomic<bool> g_back_pressed{false};
++}  // namespace
++
++void SetGuideCapture(bool capture) { g_guide_capture.store(capture); }
++bool GuideCaptureActive() { return g_guide_capture.load(); }
++uint32_t TakeGuidePresses() { return g_guide_presses.exchange(0); }
++void SetBackWatch(bool watch) { g_back_watch.store(watch); }
++bool TakeBackPress() { return g_back_pressed.exchange(false); }
++
  X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
    SCOPE_profile_cpu_f("hid");
 +  std::lock_guard lock(devices_mutex_);
    if (!assignment_) {
      return X_ERROR_DEVICE_NOT_CONNECTED;
    }
-@@ -253,6 +256,7 @@ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
+@@ -245,6 +264,27 @@ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
+   if (!any) {
+     return X_ERROR_DEVICE_NOT_CONNECTED;
+   }
++  if (user_index == 0) {
++    const uint16_t buttons = static_cast<uint16_t>(merged.gamepad.buttons);
++    // Exit chord: START + B (Xbox layout) / START + Circle (PlayStation layout, same SDL button).
++    constexpr uint16_t kExitChord = 0x0010 | 0x2000;
++    if (g_back_watch.load() && (buttons & kExitChord) == kExitChord &&
++        (g_guide_prev_buttons & kExitChord) != kExitChord) {
++      g_back_pressed.store(true);
++    }
++    if (g_guide_capture.load()) {
++      // The dialog owns the pad: hand it the new presses, give the title a neutral pad.
++      g_guide_presses.fetch_or(static_cast<uint32_t>(buttons & ~g_guide_prev_buttons));
++      g_guide_prev_buttons = buttons;
++      merged.gamepad.buttons = 0;
++      merged.gamepad.left_trigger = 0;
++      merged.gamepad.right_trigger = 0;
++      merged.gamepad.thumb_lx = merged.gamepad.thumb_ly = 0;
++      merged.gamepad.thumb_rx = merged.gamepad.thumb_ry = 0;
++    } else {
++      g_guide_prev_buttons = buttons;  // a button held while opening is not a press
++    }
++  }
+   if (out_state) {
+     *out_state = merged;
+   }
+@@ -253,6 +293,7 @@ X_RESULT InputSystem::GetState(uint32_t user_index, X_INPUT_STATE* out_state) {
  
  X_RESULT InputSystem::SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration) {
    SCOPE_profile_cpu_f("hid");
@@ -2728,7 +3136,7 @@ index 813bb1c..39a6222 100644
    if (!assignment_) {
      return X_ERROR_DEVICE_NOT_CONNECTED;
    }
-@@ -295,6 +299,7 @@ X_RESULT InputSystem::SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration
+@@ -295,10 +336,15 @@ X_RESULT InputSystem::SetState(uint32_t user_index, X_INPUT_VIBRATION* vibration
  X_RESULT InputSystem::GetKeystroke(uint32_t user_index, uint32_t flags,
                                     X_INPUT_KEYSTROKE* out_keystroke) {
    SCOPE_profile_cpu_f("hid");
@@ -2736,6 +3144,300 @@ index 813bb1c..39a6222 100644
    if (!assignment_) {
      return X_ERROR_DEVICE_NOT_CONNECTED;
    }
+ 
++  if (user_index == 0 && g_guide_capture.load()) {
++    return X_ERROR_EMPTY;  // the exit dialog owns the pad
++  }
++
+   RefreshDevices();
+   std::vector<DeviceId> ids;
+   assignment_->DevicesForUser(user_index, ids);
+diff --git a/src/input/sdl/sdl_input_driver.cpp b/src/input/sdl/sdl_input_driver.cpp
+index c7c440d..d998314 100644
+--- a/src/input/sdl/sdl_input_driver.cpp
++++ b/src/input/sdl/sdl_input_driver.cpp
+@@ -10,6 +10,7 @@
+  */
+ 
+ #include <array>
++#include <cstdlib>
+ #include <filesystem>
+ 
+ #include <rex/assert.h>
+@@ -27,6 +28,8 @@ namespace rex::input::sdl {
+ 
+ namespace {
+ 
++int g_fifastreet_controller_ordinal = 0;
++
+ // SDL clamps to SDL_MAX_RUMBLE_DURATION_MS, which is not a public constant.
+ constexpr uint32_t kRumbleDurationMs = 0xFFFF;
+ 
+@@ -460,6 +463,16 @@ void SDLInputDriver::OnControllerDeviceAddedLocked(const SDL_Event& event) {
+   // SDL_GetGamepadPlayerIndex is deliberately ignored: on Windows it reports
+   // the XInput user index the OS assigned, which is unrelated to connection
+   // order and leaves non-XInput pads unnumbered.
++  const int detected_ordinal = g_fifastreet_controller_ordinal++;
++  const char* forced_slot = std::getenv("FIFASTREET_XINPUT_SLOT");
++  if (forced_slot && *forced_slot) {
++    const int wanted = std::atoi(forced_slot);
++    if (wanted >= 0 && detected_ordinal != wanted) {
++      SDL_CloseGamepad(controller);
++      return;
++    }
++  }
++
+   ControllerState state = {};
+   state.sdl = controller;
+   state.id = AllocateDeviceId();
+diff --git a/src/input/xinput/xinput_input_driver.cpp b/src/input/xinput/xinput_input_driver.cpp
+index a6a1da9..c5b318e 100644
+--- a/src/input/xinput/xinput_input_driver.cpp
++++ b/src/input/xinput/xinput_input_driver.cpp
+@@ -12,6 +12,7 @@
+ #include <array>
+ #include <filesystem>
+ 
++#include <cstdlib>
+ #include <rex/assert.h>
+ #include <rex/chrono/clock.h>
+ #include <rex/cvar.h>
+@@ -36,7 +37,18 @@ bool SlotForDevice(rex::input::DeviceId id, uint32_t* out_slot) {
+   if ((raw & ~0xFFull) != 0x58490000ull || (raw & 0xFF) >= kXinputSlotCount) {
+     return false;
+   }
+-  *out_slot = static_cast<uint32_t>(raw & 0xFF);
++
++  const uint32_t slot = static_cast<uint32_t>(raw & 0xFF);
++  const char* forced_slot = std::getenv("FIFASTREET_XINPUT_SLOT");
++  if (forced_slot && *forced_slot) {
++    const int wanted = std::atoi(forced_slot);
++    if (wanted < 0 || wanted >= static_cast<int>(kXinputSlotCount) ||
++        slot != static_cast<uint32_t>(wanted)) {
++      return false;
++    }
++  }
++
++  *out_slot = slot;
+   return true;
+ }
+ 
+diff --git a/src/kernel/CMakeLists.txt b/src/kernel/CMakeLists.txt
+index 984b97d..33688e4 100644
+--- a/src/kernel/CMakeLists.txt
++++ b/src/kernel/CMakeLists.txt
+@@ -3,6 +3,7 @@ set(REXKERNEL_SOURCES
+ 
+     # XAM subsystem - provides __imp__Xam* symbols
+     xam/xam_module.cpp
++    xam/exit_overlay.cpp
+     xam/xam_avatar.cpp
+     xam/xam_content.cpp
+     xam/xam_content_aggregate.cpp
+diff --git a/src/kernel/xam/apps/xlivebase_app.cpp b/src/kernel/xam/apps/xlivebase_app.cpp
+index 3593403..42597d2 100644
+--- a/src/kernel/xam/apps/xlivebase_app.cpp
++++ b/src/kernel/xam/apps/xlivebase_app.cpp
+@@ -30,6 +30,19 @@ X_HRESULT XLiveBaseApp::DispatchMessageSync(uint32_t message, uint32_t buffer_pt
+   // NOTE: buffer_length may be zero or valid.
+   auto buffer = memory_->TranslateVirtual(buffer_ptr);
+   switch (message) {
++    case 0x0005000C: {
++      // FIFA Street: allow the Online Hub XLIVEBASE request.
++      REXKRNL_INFO(
++          "[ONLINE] XLiveBaseFifaStreet5000C accepted buffer={:08X} length={:08X}",
++          buffer_ptr, buffer_length);
++      return X_E_SUCCESS;
++    }
++
++    case 0x00050010: {
++      // FIFA Street online: accept this XLIVEBASE request for now.
++      REXKRNL_DEBUG("XLiveBaseFifaStreet50010({:08X}, {:08X})", buffer_ptr, buffer_length);
++      return X_E_SUCCESS;
++    }
+     case 0x00058004: {
+       // Called on startup, seems to just return a bool in the buffer.
+       assert_true(!buffer_length || buffer_length == 4);
+diff --git a/src/kernel/xam/exit_overlay.cpp b/src/kernel/xam/exit_overlay.cpp
+new file mode 100644
+index 0000000..ebb9121
+--- /dev/null
++++ b/src/kernel/xam/exit_overlay.cpp
+@@ -0,0 +1,174 @@
++/**
++ * Exit shortcut: START + B (Xbox layout) / START + Circle (PlayStation layout) on any screen
++ * opens an "exit the game?" confirmation drawn in the game's own style; A confirms, B cancels.
++ */
++#include <atomic>
++#include <chrono>
++#include <memory>
++#include <string>
++#include <thread>
++
++#include <imgui.h>
++#include <spdlog/spdlog.h>
++#if defined(_WIN32)
++#include <windows.h>
++#endif
++
++#include <rex/input/guide_capture.h>
++#include <rex/logging.h>
++#include <rex/runtime.h>
++#include <rex/system/kernel_state.h>
++#include <rex/ui/guide_font.h>
++#include <rex/ui/imgui_dialog.h>
++#include <rex/ui/imgui_drawer.h>
++#include <rex/ui/windowed_app_context.h>
++
++namespace rex::kernel::xam {
++uint32_t XGetLanguage_entry();  // xam_info.cpp: the game's current language (XLanguage)
++}
++
++namespace rex {
++namespace kernel {
++namespace xam {
++namespace {
++
++enum class Str { kExitConfirm, kYes, kNo };
++
++// Texts per game language (XLanguage: 1 EN, 3 DE, 4 FR, 5 ES, 6 IT, 9 PT). Others use English.
++std::string Tr(Str id) {
++  struct Row { const char* en; const char* de; const char* fr; const char* es; const char* it; const char* pt; };
++  static const Row kRows[] = {
++      /*kExitConfirm*/ {"EXIT THE GAME?", "SPIEL BEENDEN?", "QUITTER LE JEU ?", "\xC2\xBFSALIR DEL JUEGO?",
++                        "USCIRE DAL GIOCO?", "SAIR DO JOGO?"},
++      /*kYes*/ {"YES", "JA", "OUI", "SI", "SI", "SIM"},
++      /*kNo*/ {"NO", "NEIN", "NON", "NO", "NO", "NAO"},
++  };
++  const Row& row = kRows[static_cast<size_t>(id)];
++  switch (XGetLanguage_entry()) {
++    case 3: return row.de;
++    case 4: return row.fr;
++    case 5: return row.es;
++    case 6: return row.it;
++    case 9: return row.pt;
++    default: return row.en;
++  }
++}
++
++// The game's look: slanted black bars, yellow highlight, heavy condensed caps.
++struct Style {
++  ImDrawList* dl;
++  ImFont* font;
++  float s;  // layout scale (display height / 720)
++
++  void Slant(float x, float y, float w, float h, ImU32 color, float skew = 14.0f) const {
++    const float k = skew * s;
++    ImVec2 pts[4] = {ImVec2(x + k, y), ImVec2(x + w + k, y), ImVec2(x + w, y + h), ImVec2(x, y + h)};
++    dl->AddConvexPolyFilled(pts, 4, color);
++  }
++  void Text(float x, float y, float size, ImU32 color, const std::string& text) const {
++    dl->AddText(font, size * s, ImVec2(x, y), color, text.c_str());
++  }
++  float TextWidth(float size, const std::string& text) const {
++    return font->CalcTextSizeA(size * s, 3.4e38f, 0.0f, text.c_str()).x;
++  }
++  // Round button glyph like the footer hints of the game: (A) text.
++  void Hint(float& x, float y, const char* letter, const char* label, ImU32 ring) const {
++    const float r = 15.0f * s;
++    dl->AddCircle(ImVec2(x + r, y + r), r, ring, 24, 2.5f * s);
++    const float lw = TextWidth(22, letter);
++    Text(x + r - lw * 0.5f, y + r - 11.0f * s, 22, ring, letter);
++    x += 2 * r + 10.0f * s;
++    Text(x, y + 1.0f * s, 24, IM_COL32(255, 255, 255, 255), label);
++    x += TextWidth(24, label) + 34.0f * s;
++  }
++};
++
++std::atomic_bool g_confirm{false};
++
++void DrawExit(float width, float height) {
++  constexpr uint32_t kA = 0x1000, kB = 0x2000;
++  // The chord is recorded by the input system while watching.
++  rex::input::SetBackWatch(!g_confirm.load());
++  if (!g_confirm.load() && rex::input::TakeBackPress()) g_confirm = true;
++
++  const bool confirm = g_confirm.load();
++  if (confirm != rex::input::GuideCaptureActive()) {
++    rex::input::SetGuideCapture(confirm);
++    if (confirm) rex::input::TakeGuidePresses();  // drop presses from before it opened
++  }
++  if (!confirm) return;
++  const uint32_t presses = rex::input::TakeGuidePresses();
++
++  ImFont* font = rex::ui::g_guide_font ? rex::ui::g_guide_font : ImGui::GetFont();
++  const float s = height / 720.0f;
++
++  ImGui::SetNextWindowPos(ImVec2(0, 0));
++  ImGui::SetNextWindowSize(ImVec2(width, height));
++  ImGui::SetNextWindowBgAlpha(0.0f);
++  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
++  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
++  const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
++                                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
++                                 ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
++                                 ImGuiWindowFlags_NoBringToFrontOnFocus;
++  if (ImGui::Begin("##exit_canvas", nullptr, flags)) {
++    Style g{ImGui::GetWindowDrawList(), font, s};
++    const float w = 560 * s, h = 132 * s, x = (width - w) * 0.5f, y = height * 0.5f - h * 0.5f;
++    g.dl->AddRectFilled(ImVec2(0, 0), ImVec2(width, height), IM_COL32(0, 0, 0, 150));
++    g.Slant(x - 6 * s, y - 6 * s, w + 12 * s, h + 12 * s, IM_COL32(244, 196, 12, 255));
++    g.Slant(x, y, w, h, IM_COL32(12, 12, 14, 240));
++    g.Text(x + 34 * s, y + 26 * s, 46, IM_COL32(255, 255, 255, 255), Tr(Str::kExitConfirm));
++    float hx = x + 34 * s;
++    g.Hint(hx, y + h - 46 * s, "A", Tr(Str::kYes).c_str(), IM_COL32(244, 196, 12, 255));
++    g.Hint(hx, y + h - 46 * s, "B", Tr(Str::kNo).c_str(), IM_COL32(255, 255, 255, 255));
++    if (presses & kA) {
++      REXKRNL_INFO("[EXIT] closing the game (START + B)");
++      g_confirm = false;
++      rex::input::SetGuideCapture(false);
++      if (auto logger = spdlog::default_logger()) logger->flush();
++#if defined(_WIN32)
++      TerminateProcess(GetCurrentProcess(), 0);  // clean exit code, no crash dialog
++#else
++      std::_Exit(0);
++#endif
++    } else if (presses & kB) {
++      g_confirm = false;
++    }
++  }
++  ImGui::End();
++  ImGui::PopStyleVar(2);
++}
++
++class ExitOverlayDialog : public rex::ui::ImGuiDialog {
++ public:
++  explicit ExitOverlayDialog(rex::ui::ImGuiDrawer* drawer) : rex::ui::ImGuiDialog(drawer) {}
++  void OnDraw(ImGuiIO& io) override { DrawExit(io.DisplaySize.x, io.DisplaySize.y); }
++};
++
++std::unique_ptr<ExitOverlayDialog> g_overlay;
++
++}  // namespace
++
++// Creates the overlay once the emulator's ImGui drawer exists.
++void StartExitOverlay() {
++  static std::atomic_bool started{false};
++  if (started.exchange(true)) return;
++  std::thread([]() {
++    for (;;) {
++      auto* state = REX_KERNEL_STATE();
++      const Runtime* emulator = state ? state->emulator() : nullptr;
++      rex::ui::ImGuiDrawer* drawer = emulator ? emulator->imgui_drawer() : nullptr;
++      rex::ui::WindowedAppContext* context = emulator ? emulator->app_context() : nullptr;
++      if (drawer && context) {
++        context->CallInUIThreadSynchronous([drawer]() { g_overlay = std::make_unique<ExitOverlayDialog>(drawer); });
++        REXKRNL_INFO("[EXIT] exit shortcut ready");
++        return;
++      }
++      std::this_thread::sleep_for(std::chrono::milliseconds(500));
++    }
++  }).detach();
++}
++
++}  // namespace xam
++}  // namespace kernel
++}  // namespace rex
 diff --git a/src/kernel/xam/xam_info.cpp b/src/kernel/xam/xam_info.cpp
 index 1fda053..fcdf567 100644
 --- a/src/kernel/xam/xam_info.cpp
@@ -2798,6 +3500,227 @@ index 1fda053..fcdf567 100644
  
    // Allocate from the heap. Not sure why XAM does this specially, perhaps
    // it keeps stuff in a separate heap?
+diff --git a/src/kernel/xam/xam_module.cpp b/src/kernel/xam/xam_module.cpp
+index 6bad7c7..7f1d311 100644
+--- a/src/kernel/xam/xam_module.cpp
++++ b/src/kernel/xam/xam_module.cpp
+@@ -23,6 +23,8 @@ namespace xam {
+ using namespace rex::system;
+ using namespace rex::system::xam;
+ 
++void StartExitOverlay();  // exit_overlay.cpp
++
+ std::atomic<int> xam_dialogs_shown_ = {0};
+ 
+ bool xeXamIsUIActive() {
+@@ -31,6 +33,7 @@ bool xeXamIsUIActive() {
+ 
+ XamModule::XamModule(Runtime* emulator, KernelState* kernel_state)
+     : KernelModule(kernel_state, "xe:\\xam.xex"), loader_data_() {
++  StartExitOverlay();
+   RegisterExportTable(export_resolver_);
+ 
+   // Register all exported functions.
+diff --git a/src/kernel/xam/xam_net.cpp b/src/kernel/xam/xam_net.cpp
+index 58e36a4..3cbb652 100644
+--- a/src/kernel/xam/xam_net.cpp
++++ b/src/kernel/xam/xam_net.cpp
+@@ -355,17 +355,27 @@ u32 NetDll_WSASendTo_entry(u32 caller, u32 socket_handle, ppc_ptr_t<XWSABUF> buf
+ 
+ u32 NetDll_WSAWaitForMultipleEvents_entry(u32 num_events, mapped_u32 events, u32 wait_all,
+                                           u32 timeout, u32 alertable) {
+-  if (num_events > 64) {
++  if (num_events == 0 || num_events > 64) {
+     XThread::SetLastError(87);  // ERROR_INVALID_PARAMETER
+     return ~0u;
+   }
+ 
+-  uint64_t timeout_wait = (uint64_t)timeout;
++  uint64_t timeout_wait = static_cast<uint64_t>(timeout);
++
++  // XObject::WaitMultiple uses:
++  //   wait_type != 0 -> WaitAny
++  //   wait_type == 0 -> WaitAll
++  //
++  // WSAWaitForMultipleEvents uses the opposite semantic for bWaitAll:
++  //   FALSE -> WaitAny
++  //   TRUE  -> WaitAll
++  const uint32_t wait_type = wait_all ? 0u : 1u;
+ 
+   X_STATUS result = 0;
+   do {
+-    result = xboxkrnl::xeNtWaitForMultipleObjectsEx(num_events, events, wait_all, 1, alertable,
+-                                                    timeout != -1 ? &timeout_wait : nullptr);
++    result = xboxkrnl::xeNtWaitForMultipleObjectsEx(
++        num_events, events, wait_type, 1, alertable,
++        timeout != 0xFFFFFFFFu ? &timeout_wait : nullptr);
+   } while (result == X_STATUS_ALERTED);
+ 
+   if (XFAILED(result)) {
+@@ -373,7 +383,15 @@ u32 NetDll_WSAWaitForMultipleEvents_entry(u32 num_events, mapped_u32 events, u32
+     XThread::SetLastError(error);
+     return ~0u;
+   }
+-  return 0;
++
++  REXKRNL_INFO(
++      "[ONLINE] WSAWaitForMultipleEvents count={} wait_all={} timeout={} result=0x{:08X}",
++      num_events, wait_all, timeout, static_cast<uint32_t>(result));
++
++  // WaitAny success is already 0 + event index.
++  // WaitAll success is 0.
++  // X_STATUS_TIMEOUT is 0x102, matching WSA_WAIT_TIMEOUT.
++  return static_cast<uint32_t>(result);
+ }
+ 
+ u32 NetDll_WSACreateEvent_entry() {
+@@ -393,7 +411,14 @@ u32 NetDll_WSACloseEvent_entry(u32 event_handle) {
+ }
+ 
+ u32 NetDll_WSAResetEvent_entry(u32 event_handle) {
++  REXKRNL_INFO("[ONLINE] WSAResetEvent enter handle=0x{:08X}", event_handle);
++
+   X_STATUS result = xboxkrnl::xeNtClearEvent(event_handle);
++
++  REXKRNL_INFO(
++      "[ONLINE] WSAResetEvent leave handle=0x{:08X} result=0x{:08X}",
++      event_handle, static_cast<uint32_t>(result));
++
+   if (XFAILED(result)) {
+     uint32_t error = xboxkrnl::xeRtlNtStatusToDosError(result);
+     XThread::SetLastError(error);
+@@ -919,6 +944,65 @@ u32 NetDll_sendto_entry(u32 caller, u32 socket_handle, mapped_void buf_ptr, u32
+   return socket->SendTo(buf_ptr, buf_len, flags, &native_to, to_len);
+ }
+ 
++u32 NetDll_getsockname_entry(u32 caller, u32 socket_handle,
++                             ppc_ptr_t<XSOCKADDR_IN> name,
++                             mapped_u32 namelen_ptr) {
++  if (!name || !namelen_ptr) {
++    // WSAEFAULT
++    XThread::SetLastError(0x271E);
++    return -1;
++  }
++
++  auto socket = REX_KERNEL_OBJECTS()->LookupObject<XSocket>(socket_handle);
++  if (!socket) {
++    // WSAENOTSOCK
++    XThread::SetLastError(0x2736);
++    return -1;
++  }
++
++  N_XSOCKADDR_IN native_name = {};
++
++#if REX_PLATFORM_WIN32
++  int native_len = sizeof(native_name);
++  int ret = ::getsockname(
++      static_cast<SOCKET>(socket->native_handle()),
++      reinterpret_cast<sockaddr*>(&native_name),
++      &native_len);
++#else
++  socklen_t native_len = sizeof(native_name);
++  int ret = ::getsockname(
++      static_cast<int>(socket->native_handle()),
++      reinterpret_cast<sockaddr*>(&native_name),
++      &native_len);
++#endif
++
++  if (ret == -1) {
++#if REX_PLATFORM_WIN32
++    XThread::SetLastError(WSAGetLastError());
++#else
++    XThread::SetLastError(0);
++#endif
++    return -1;
++  }
++
++  name->sin_family = native_name.sin_family;
++  name->sin_port = native_name.sin_port;
++  name->sin_addr = native_name.sin_addr;
++  std::memset(name->x_sin_zero, 0, sizeof(name->x_sin_zero));
++
++  *namelen_ptr = static_cast<uint32_t>(native_len);
++
++  REXKRNL_INFO(
++      "[ONLINE] NetDll_getsockname socket={} name=0x{:08X} lenptr=0x{:08X} family={} port={} len={}",
++      socket_handle,
++      name.guest_address(),
++      namelen_ptr.guest_address(),
++      native_name.sin_family,
++      ntohs(static_cast<uint16_t>(native_name.sin_port)),
++      static_cast<uint32_t>(native_len));
++
++  return 0;
++}
+ u32 NetDll___WSAFDIsSet_entry(u32 socket_handle, ppc_ptr_t<x_fd_set> fd_set) {
+   const uint8_t max_fd_count = std::min((uint32_t)fd_set->fd_count, uint32_t(64));
+   for (uint8_t i = 0; i < max_fd_count; i++) {
+@@ -1098,5 +1182,5 @@ REX_EXPORT_STUB(__imp__NetDll_XnpToolSetCallbacks);
+ REX_EXPORT_STUB(__imp__NetDll_XnpUnregisterKeyForCallerType);
+ REX_EXPORT_STUB(__imp__NetDll_XnpUpdateConfigParams);
+ REX_EXPORT_STUB(__imp__NetDll_getpeername);
+-REX_EXPORT_STUB(__imp__NetDll_getsockname);
++REX_EXPORT(__imp__NetDll_getsockname, rex::kernel::xam::NetDll_getsockname_entry)
+ REX_EXPORT_STUB(__imp__NetDll_getsockopt);
+diff --git a/src/kernel/xam/xam_ui.cpp b/src/kernel/xam/xam_ui.cpp
+index 5a572ce..0d2ff30 100644
+--- a/src/kernel/xam/xam_ui.cpp
++++ b/src/kernel/xam/xam_ui.cpp
+@@ -609,7 +609,7 @@ REX_EXPORT_STUB(__imp__XamShowFitnessWarnAboutTimeUI);
+ REX_EXPORT_STUB(__imp__XamShowFofUI);
+ REX_EXPORT_STUB(__imp__XamShowForcedNameChangeUI);
+ REX_EXPORT_STUB(__imp__XamShowFriendRequestUI);
+-REX_EXPORT_STUB(__imp__XamShowFriendsUI);
++REX_EXPORT_STUB_RETURN(__imp__XamShowFriendsUI, 0);
+ REX_EXPORT_STUB(__imp__XamShowFriendsUIp);
+ REX_EXPORT_STUB(__imp__XamShowGameInviteUI);
+ REX_EXPORT_STUB(__imp__XamShowGameVoiceChannelUI);
+diff --git a/src/kernel/xam/xam_user.cpp b/src/kernel/xam/xam_user.cpp
+index 8778066..f87781c 100644
+--- a/src/kernel/xam/xam_user.cpp
++++ b/src/kernel/xam/xam_user.cpp
+@@ -98,7 +98,7 @@ i32 XamUserGetSigninInfo_entry(u32 user_index, u32 flags, ppc_ptr_t<X_USER_SIGNI
+ 
+   const auto& user_profile = REX_KERNEL_STATE()->user_profile();
+   info->xuid = user_profile->xuid();
+-  info->signin_state = user_profile->signin_state();
++  info->signin_state = 2; // FIFA Street: report Xbox Live sign-in
+   rex::string::copy_truncating(info->name, user_profile->name(), rex::countof(info->name));
+   return X_E_SUCCESS;
+ }
+@@ -382,8 +382,9 @@ u32 XamUserCheckPrivilege_entry(u32 user_index, u32 mask, mapped_u32 out_value)
+     }
+   }
+ 
+-  // If we deny everything, games should hopefully not try to do stuff.
+-  *out_value = 0;
++  // FIFA Street online test
++  REXKRNL_INFO("FIFA SIGNIN TRACE: XamUserCheckPrivilege user={} privilege={} -> ALLOWED", user_index, mask);
++  *out_value = 1;
+   return X_ERROR_SUCCESS;
+ }
+ 
+@@ -769,7 +770,8 @@ REX_EXPORT_STUB(__imp__XamUserGetAgeGroup);
+ REX_EXPORT_STUB(__imp__XamUserGetCachedUserFlags);
+ REX_EXPORT_STUB(__imp__XamUserGetDeviceId);
+ REX_EXPORT_STUB(__imp__XamUserGetIndexFromXUID);
+-REX_EXPORT_STUB(__imp__XamUserGetMembershipTierFromXUID);
++u32 XamUserGetMembershipTierFromXUID_entry(u64 xuid) { REXKRNL_INFO("FIFA SIGNIN TRACE: XamUserGetMembershipTierFromXUID xuid={:016X} -> GOLD(6)", xuid); return 6; }
++REX_EXPORT(__imp__XamUserGetMembershipTierFromXUID, XamUserGetMembershipTierFromXUID_entry);
+ REX_EXPORT_STUB(__imp__XamUserGetOnlineCountryFromXUID);
+ REX_EXPORT_STUB(__imp__XamUserGetOnlineLanguageFromXUID);
+ REX_EXPORT_STUB(__imp__XamUserGetOnlineXUIDFromOfflineXUID);
+@@ -814,3 +816,10 @@ REX_EXPORT_STUB(__imp__XamUserUpdateRecentPlayer);
+ REX_EXPORT_STUB(__imp__XamUserValidateAvatarManifest);
+ REX_EXPORT_STUB(__imp__XamUserWriteUserPreference);
+ REX_EXPORT_STUB(__imp__XamVerifyPasscode);
++
++
++
++
++
++
++
 diff --git a/src/kernel/xboxkrnl/xboxkrnl_modules.cpp b/src/kernel/xboxkrnl/xboxkrnl_modules.cpp
 index dcd2001..97dd0ed 100644
 --- a/src/kernel/xboxkrnl/xboxkrnl_modules.cpp
@@ -3259,6 +4182,18 @@ index 76cc877..121f321 100644
  bool Memory::SetFunction(uint32_t guest_address, PPCFunc* host_function) {
    uint32_t table_address = 0;
    {
+diff --git a/src/ui/CMakeLists.txt b/src/ui/CMakeLists.txt
+index 5bd3dc5..e573a94 100644
+--- a/src/ui/CMakeLists.txt
++++ b/src/ui/CMakeLists.txt
+@@ -7,6 +7,7 @@ set(REXUI_CORE_SOURCES
+     image_decode.cpp
+     imgui_dialog.cpp
+     imgui_drawer.cpp
++    game_ui_fonts.cpp
+     immediate_drawer.cpp
+     keybinds.cpp
+     menu_item.cpp
 diff --git a/src/ui/d3d12/d3d12_presenter.cpp b/src/ui/d3d12/d3d12_presenter.cpp
 index 306118e..2001e5c 100644
 --- a/src/ui/d3d12/d3d12_presenter.cpp
@@ -3286,6 +4221,234 @@ index 306118e..2001e5c 100644
    // Even if presentation has failed, work might have been enqueued anyway
    // internally before the failure according to Jesse Natalie from the DirectX
    // Discord server.
+diff --git a/src/ui/game_ui_fonts.cpp b/src/ui/game_ui_fonts.cpp
+new file mode 100644
+index 0000000..e637829
+--- /dev/null
++++ b/src/ui/game_ui_fonts.cpp
+@@ -0,0 +1,162 @@
++// Loads the game's own UI fonts (the TrueType files stored in data0.big) so that the overlays
++// drawn by the runtime use exactly the lettering of the original menus.
++//
++// data0.big is a BIG4 archive; the font entries are "chunklzx" blobs (Xbox 360 LZX):
++//   'chunklzx', version, total size, chunk size, chunk count, ..., then per chunk an 8-byte
++//   header (u32 compressed size, u32 3) followed by 32 KB LZX frames. Frames are
++//   [u16 size] (full frame) or [0xFF][u16 usize][u16 csize] (short last frame); the frame
++//   headers are not part of the LZX bitstream.
++
++#include <imgui.h>
++
++#include <rex/logging.h>
++#include <rex/system/lzx.h>
++#include <rex/ui/guide_font.h>
++
++#include <cstdint>
++#include <cstdio>
++#include <cstring>
++#include <filesystem>
++#include <string>
++#include <vector>
++
++namespace rex::ui {
++
++ImFont* g_guide_font = nullptr;
++ImFont* g_guide_font_light = nullptr;
++
++namespace {
++
++uint32_t Be32(const uint8_t* p) {
++  return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | p[3];
++}
++uint32_t Le32(const uint8_t* p) {
++  return (uint32_t(p[3]) << 24) | (uint32_t(p[2]) << 16) | (uint32_t(p[1]) << 8) | p[0];
++}
++uint16_t Be16(const uint8_t* p) { return uint16_t((p[0] << 8) | p[1]); }
++
++bool ReadAt(FILE* file, uint64_t offset, void* out, size_t size) {
++  if (_fseeki64(file, static_cast<long long>(offset), SEEK_SET) != 0) return false;
++  return std::fread(out, 1, size, file) == size;
++}
++
++bool DecompressChunkLzx(const std::vector<uint8_t>& data, std::vector<uint8_t>& out) {
++  if (data.size() < 48 || std::memcmp(data.data(), "chunklzx", 8) != 0) return false;
++  const uint32_t total = Be32(&data[12]);
++  const uint32_t chunk_size = Be32(&data[16]);
++  if (!total || !chunk_size || total > (64u << 20)) return false;
++  out.assign(total, 0);
++  size_t produced = 0;
++  size_t header = 40;
++  while (produced < total) {
++    if (header + 8 > data.size()) return false;
++    const uint32_t csize = Be32(&data[header]);
++    const size_t start = header + 8;
++    const size_t want = std::min<size_t>(chunk_size, total - produced);
++    std::vector<uint8_t> payload;
++    size_t pos = start, got = 0;
++    while (got < want) {
++      if (pos + 2 > data.size()) return false;
++      uint32_t usize = 32768, size;
++      size_t body;
++      if (data[pos] == 0xFF) {
++        if (pos + 5 > data.size()) return false;
++        usize = Be16(&data[pos + 1]);
++        size = Be16(&data[pos + 3]);
++        body = pos + 5;
++      } else {
++        size = Be16(&data[pos]);
++        body = pos + 2;
++      }
++      if (body + size > data.size()) return false;
++      payload.insert(payload.end(), data.begin() + body, data.begin() + body + size);
++      pos = body + size;
++      got += std::min<size_t>(usize, want - got);
++    }
++    if (lzx_decompress(payload.data(), payload.size(), out.data() + produced, want, 1u << 17,
++                       nullptr, 0) != 0) {
++      return false;
++    }
++    produced += want;
++    if (produced >= total) break;
++    // The next chunk header is (u32 size, u32 3) shortly after this chunk's data.
++    size_t next = 0;
++    for (size_t p = std::max(start + csize, start + 16) - 16; p < std::min(data.size() - 8, start + csize + 96);
++         ++p) {
++      if (data[p] == 0 && Be32(&data[p + 4]) == 3) {
++        const uint32_t size = Be32(&data[p]);
++        if (size > 0 && size <= data.size() - p - 8) {
++          next = p;
++          if (p + 4 >= start + csize) break;
++        }
++      }
++    }
++    if (!next) return false;
++    header = next;
++  }
++  return true;
++}
++
++// Finds `wanted` (lowercase file name suffix) in a BIG4 archive and returns its raw bytes.
++bool ReadBigEntry(FILE* file, const std::string& wanted, std::vector<uint8_t>& out) {
++  uint8_t head[16];
++  if (!ReadAt(file, 0, head, sizeof(head)) || std::memcmp(head, "BIG4", 4) != 0) return false;
++  const uint32_t count = Be32(&head[8]);
++  const uint32_t header_size = Be32(&head[12]);
++  if (header_size < 16 || header_size > (64u << 20)) return false;
++  std::vector<uint8_t> table(header_size - 16);
++  if (!ReadAt(file, 16, table.data(), table.size())) return false;
++  size_t p = 0;
++  for (uint32_t i = 0; i < count && p + 9 <= table.size(); ++i) {
++    const uint32_t offset = Be32(&table[p]);
++    const uint32_t size = Be32(&table[p + 4]);
++    p += 8;
++    size_t end = p;
++    while (end < table.size() && table[end]) ++end;
++    std::string name(reinterpret_cast<const char*>(&table[p]), end - p);
++    p = end + 1;
++    for (char& c : name) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
++    if (name == wanted) {
++      out.resize(size);
++      return ReadAt(file, offset, out.data(), size);
++    }
++  }
++  return false;
++}
++
++ImFont* AddFont(ImFontAtlas* atlas, FILE* big, const char* entry, float pixels) {
++  std::vector<uint8_t> raw, ttf;
++  if (!ReadBigEntry(big, entry, raw) || !DecompressChunkLzx(raw, ttf)) {
++    REXLOG_WARN("Game UI font {} could not be loaded", entry);
++    return nullptr;
++  }
++  void* copy = ImGui::MemAlloc(ttf.size());  // owned by the atlas
++  std::memcpy(copy, ttf.data(), ttf.size());
++  static const ImWchar ranges[] = {0x0020, 0x017F, 0};  // Latin, accents (ES/FR/DE/IT/PT)
++  ImFontConfig config;
++  config.OversampleH = config.OversampleV = 2;
++  return atlas->AddFontFromMemoryTTF(copy, static_cast<int>(ttf.size()), pixels, &config, ranges);
++}
++
++}  // namespace
++
++void LoadGameUiFonts(ImFontAtlas* atlas, const std::filesystem::path& game_data_root) {
++  const auto archive = game_data_root / "data0.big";
++  FILE* big = nullptr;
++#if defined(_WIN32)
++  _wfopen_s(&big, archive.c_str(), L"rb");
++#else
++  big = std::fopen(archive.string().c_str(), "rb");
++#endif
++  if (!big) {
++    REXLOG_WARN("Game UI fonts: {} not found", archive.string());
++    return;
++  }
++  g_guide_font = AddFont(atlas, big, "data/ui/fonts/fs4_cn_bold.ttf", 48.0f);
++  g_guide_font_light = AddFont(atlas, big, "data/ui/fonts/fs4_cn_regular.ttf", 48.0f);
++  std::fclose(big);
++  REXLOG_INFO("Game UI fonts loaded: bold={} regular={}", g_guide_font != nullptr,
++              g_guide_font_light != nullptr);
++}
++
++}  // namespace rex::ui
+diff --git a/src/ui/imgui_drawer.cpp b/src/ui/imgui_drawer.cpp
+index f270f3c..3dd2055 100644
+--- a/src/ui/imgui_drawer.cpp
++++ b/src/ui/imgui_drawer.cpp
+@@ -18,15 +18,20 @@
+ #include <rex/chrono/clock.h>
+ #include <rex/logging.h>
+ #include <rex/ui/imgui_dialog.h>
++#include <rex/cvar.h>
++#include <rex/ui/guide_font.h>
+ #include <rex/ui/imgui_drawer.h>
+ #include <rex/ui/ui_event.h>
+ #include <rex/ui/window.h>
+ 
+ #include <imgui.h>
+ 
++REXCVAR_DECLARE(std::string, game_data_root);
++
+ namespace rex {
+ namespace ui {
+ 
++
+ // File: 'ProggyTiny.ttf' (35656 bytes)
+ // Exported using binary_to_compressed_c.cpp
+ const char kProggyTinyCompressedDataBase85[10950 + 1] =
+@@ -197,10 +202,34 @@ void ImGuiDrawer::Initialize() {
+   }
+ #endif
+ 
++
+   if (font_setup_) {
+     font_setup_(io.Fonts);
+   }
+ 
++  // The game's own UI fonts, read from its data archive.
++  if (!g_guide_font) {
++    const std::string root = REXCVAR_GET(game_data_root);
++    if (!root.empty()) LoadGameUiFonts(io.Fonts, std::filesystem::path(root));
++  }
++
++  // Without the game's fonts, fall back to a heavy system face.
++  if (!g_guide_font) {
++#if REX_PLATFORM_WIN32
++  // Display font for the guide: a heavy condensed face close to the game's UI.
++  for (const char* candidate :
++       {"C:\\Windows\\Fonts\\impact.ttf", "C:\\Windows\\Fonts\\arialbd.ttf"}) {
++    if (std::filesystem::exists(candidate)) {
++      ImFontConfig guide_config;
++      guide_config.OversampleH = 2;
++      guide_config.OversampleV = 2;
++      g_guide_font = io.Fonts->AddFontFromFileTTF(candidate, 32.0f, &guide_config, font_glyph_ranges);
++      break;
++    }
++  }
++#endif
++  }
++
+   auto& style = ImGui::GetStyle();
+   ApplyDefaultStyle(style);
+   if (style_setup_) {
 diff --git a/src/ui/keybinds.cpp b/src/ui/keybinds.cpp
 index 9822f3b..604936b 100644
 --- a/src/ui/keybinds.cpp
@@ -3299,74 +4462,136 @@ index 9822f3b..604936b 100644
    for (auto& entry : g_binds) {
      if (!entry.callback)
 diff --git a/src/ui/overlay/debug_overlay.cpp b/src/ui/overlay/debug_overlay.cpp
-index 43d6c06..b55b408 100644
+index 43d6c06..5a24828 100644
 --- a/src/ui/overlay/debug_overlay.cpp
 +++ b/src/ui/overlay/debug_overlay.cpp
-@@ -12,6 +12,7 @@
+@@ -10,8 +10,11 @@
+  *              See LICENSE file in the project root for full license text.
+  */
  #include <rex/ui/overlay/debug_overlay.h>
++#include <rex/ui/guide_font.h>
  #include <rex/version.h>
  #include <imgui.h>
 +#include <algorithm>
++#include <cstdio>
  #ifdef REXGLUE_ENABLE_PERF_COUNTERS
  #include <rex/perf/counter.h>
  #include <cinttypes>
-@@ -27,12 +28,12 @@ DebugOverlayDialog::~DebugOverlayDialog() {}
+@@ -25,84 +28,82 @@ DebugOverlayDialog::DebugOverlayDialog(ImGuiDrawer* imgui_drawer, FrameStatsProv
+ DebugOverlayDialog::~DebugOverlayDialog() {}
+ 
  void DebugOverlayDialog::OnDraw(ImGuiIO& io) {
-   ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+-  ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
++  // Small FPS counter in the top-left corner (toggled with Home). It replaces the old
++  // statistics panel: one coloured line on a translucent background.
++  (void)io;
++  double fps = 0.0;
  #ifdef REXGLUE_ENABLE_PERF_COUNTERS
 -  ImGui::SetNextWindowSize(ImVec2(280, 280), ImGuiCond_FirstUseEver);
-+  ImGui::SetNextWindowSize(ImVec2(400, 330), ImGuiCond_FirstUseEver);
- #else
-   ImGui::SetNextWindowSize(ImVec2(220, 60), ImGuiCond_FirstUseEver);
- #endif
+-#else
+-  ImGui::SetNextWindowSize(ImVec2(220, 60), ImGuiCond_FirstUseEver);
+-#endif
 -  ImGui::SetNextWindowBgAlpha(0.5f);
 -  if (ImGui::Begin("Debug##overlay", nullptr, ImGuiWindowFlags_NoCollapse)) {
-+  ImGui::SetNextWindowBgAlpha(0.85f);
-+  if (ImGui::Begin("Statistics | HOME##overlay", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoSavedSettings)) {
-     if (stats_provider_) {
-       auto stats = stats_provider_();
-       if (stats.frame_count > 0) {
-@@ -45,11 +46,32 @@ void DebugOverlayDialog::OnDraw(ImGuiIO& io) {
-     // Frame time graph
-     auto ft_us = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameTimeUs);
-     float ft_ms = static_cast<float>(ft_us) / 1000.0f;
+-    if (stats_provider_) {
+-      auto stats = stats_provider_();
+-      if (stats.frame_count > 0) {
+-        ImGui::Text("Guest: %.1f FPS (%.2f ms)", stats.fps, stats.frame_time_ms);
+-      }
+-    }
+-#ifdef REXGLUE_ENABLE_PERF_COUNTERS
+-    ImGui::Separator();
+-
+-    // Frame time graph
+-    auto ft_us = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameTimeUs);
+-    float ft_ms = static_cast<float>(ft_us) / 1000.0f;
 -    frame_time_history_[frame_history_idx_] = ft_ms;
--    frame_history_idx_ = (frame_history_idx_ + 1) % kFrameHistorySize;
++  // Recent average over the last guest frames (same source the old statistics panel used).
++  const auto frame_time_us = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameTimeUs);
++  const float frame_time_ms = static_cast<float>(frame_time_us) / 1000.0f;
++  const auto guest_frame = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameNumber);
++  if (guest_frame != last_guest_frame_ && frame_time_ms > 0.0f) {
++    last_guest_frame_ = guest_frame;
++    frame_time_history_[frame_history_idx_] = frame_time_ms;
+     frame_history_idx_ = (frame_history_idx_ + 1) % kFrameHistorySize;
 -    ImGui::PlotLines("##ft", frame_time_history_.data(), kFrameHistorySize,
 -                     static_cast<int>(frame_history_idx_), "Frame (ms)", 0.0f, 50.0f,
 -                     ImVec2(200, 40));
-+    auto guest_frame = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameNumber);
-+    if (guest_frame != last_guest_frame_ && ft_ms > 0.0f) {
-+      last_guest_frame_ = guest_frame;
-+      frame_time_history_[frame_history_idx_] = ft_ms;
-+      frame_history_idx_ = (frame_history_idx_ + 1) % kFrameHistorySize;
-+      frame_history_count_ = std::min(frame_history_count_ + 1, kFrameHistorySize);
-+    }
-+    float total = 0.0f, worst = 0.0f;
-+    size_t slow = 0;
-+    for (size_t i = 0; i < frame_history_count_; ++i) {
-+      float ms = frame_time_history_[i];
-+      total += ms;
-+      worst = std::max(worst, ms);
-+      slow += ms > (1000.0f / 60.0f);
-+    }
-+    if (total > 0.0f) {
-+      ImGui::Text("FPS (recent): %.1f", 1000.0f * frame_history_count_ / total);
-+      ImGui::Text("Frame: %.2f ms | Worst: %.2f ms", ft_ms, worst);
-+      ImGui::Text("Above 16.67 ms: %zu / %zu", slow, frame_history_count_);
-+    }
-+    ImGui::PlotLines("##ft", frame_time_history_.data(),
-+                     static_cast<int>(frame_history_count_),
-+                     frame_history_count_ == kFrameHistorySize ? static_cast<int>(frame_history_idx_) : 0,
-+                     "Frame time (ms) | 60 FPS = 16.67 ms", 0.0f, std::max(40.0f, worst),
-+                     ImVec2(-1, 65));
-+    ImGui::TextDisabled("Guest swap timing; recent observed samples");
+-
+-    // GPU
+-    ImGui::Text("Draw: %" PRId64 "  Stalls: %" PRId64 "  Verts: %" PRId64,
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kDrawCalls),
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kCommandBufferStalls),
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kVerticesProcessed));
+-
+-    // Audio
+-    ImGui::Text("XMA: %" PRId64 "  Lat: %.1fms  BufQ: %" PRId64,
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kXmaFramesDecoded),
+-                static_cast<float>(
+-                    rex::perf::GetSnapshotCounter(rex::perf::CounterId::kAudioFrameLatencyUs)) /
+-                    1000.0f,
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kBufferQueueDepth));
+-
+-    // Dispatch
+-    ImGui::Text("Dispatch: %" PRId64 "  IRQ: %" PRId64,
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFunctionsDispatched),
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kInterruptDispatches));
++    frame_history_count_ = std::min(frame_history_count_ + 1, kFrameHistorySize);
++  }
++  float total_ms = 0.0f;
++  for (size_t i = 0; i < frame_history_count_; ++i) total_ms += frame_time_history_[i];
++  if (total_ms > 0.0f) fps = 1000.0 * frame_history_count_ / total_ms;
++#endif
++  if (fps <= 0.0 && stats_provider_) {
++    const auto stats = stats_provider_();
++    if (stats.frame_count > 0) fps = stats.fps;
++  }
++  if (fps <= 0.0) return;
  
-     // GPU
-     ImGui::Text("Draw: %" PRId64 "  Stalls: %" PRId64 "  Verts: %" PRId64,
-@@ -87,22 +109,7 @@ void DebugOverlayDialog::OnDraw(ImGuiIO& io) {
+-    // Threading
+-    ImGui::Text("Threads: %" PRId64 "  APC: %" PRId64 "  Contention: %" PRId64,
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kActiveThreads),
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kApcQueueDepth),
+-                rex::perf::GetSnapshotCounter(rex::perf::CounterId::kCriticalRegionContentions));
++  // The game's own heavy UI font, sized from the display height (16 units of a 720p layout), so
++  // the counter keeps the same proportion at every game resolution.
++  const float scale = io.DisplaySize.y / 720.0f;
++  ImFont* font = rex::ui::g_guide_font ? rex::ui::g_guide_font : ImGui::GetFont();
++  const float text_size = 16.0f * scale;
++  char text[32];
++  std::snprintf(text, sizeof(text), "%.0f FPS", fps);
+ 
+-    // Caches
+-    auto tex_h = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kTextureCacheHits);
+-    auto tex_m = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kTextureCacheMisses);
+-    auto pip_h = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kPipelineCacheHits);
+-    auto pip_m = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kPipelineCacheMisses);
+-    ImGui::Text("TexCache: %" PRId64 "/%" PRId64 "  PipeCache: %" PRId64 "/%" PRId64, tex_h,
+-                tex_h + tex_m, pip_h, pip_h + pip_m);
+-#endif
++  // Measure the ink of the real glyphs (not the font's line box) so the text is centred in the
++  // box: visible left/right/top/bottom of the string, relative to the pen start and the baseline.
++  ImFontBaked* baked = font->GetFontBaked(text_size);
++  const float k = (baked && baked->Size > 0) ? text_size / baked->Size : 1.0f;
++  float ink_left = 1e9f, ink_right = -1e9f, ink_top = 1e9f, ink_bottom = -1e9f, pen = 0.0f;
++  for (const char* c = text; *c; ++c) {
++    const ImFontGlyph* glyph = baked ? baked->FindGlyph(static_cast<ImWchar>(*c)) : nullptr;
++    if (!glyph) continue;
++    if (glyph->Visible) {
++      ink_left = std::min(ink_left, pen + glyph->X0 * k);
++      ink_right = std::max(ink_right, pen + glyph->X1 * k);
++      ink_top = std::min(ink_top, glyph->Y0 * k);
++      ink_bottom = std::max(ink_bottom, glyph->Y1 * k);
++    }
++    pen += glyph->AdvanceX * k;
    }
-   ImGui::End();
+-  ImGui::End();
++  if (ink_left > ink_right) {  // no glyph data: fall back to the line box
++    const ImVec2 extent = font->CalcTextSizeA(text_size, 3.4e38f, 0.0f, text);
++    ink_left = 0.0f; ink_right = extent.x; ink_top = 0.0f; ink_bottom = extent.y;
++  }
++  const float pad_x = 9.0f * scale, pad_y = 6.0f * scale;
++  const ImVec2 window_size((ink_right - ink_left) + 2 * pad_x, (ink_bottom - ink_top) + 2 * pad_y);
  
 -  // Build stamp watermark -- centered near bottom of screen
 -  auto text_size = ImGui::CalcTextSize(REXGLUE_BUILD_STAMP);
@@ -3381,10 +4606,27 @@ index 43d6c06..b55b408 100644
 -                       ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
 -                       ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
 -    ImGui::TextUnformatted(REXGLUE_BUILD_STAMP);
--  }
--  ImGui::End();
++  ImGui::SetNextWindowPos(ImVec2(10.0f * scale, 8.0f * scale), ImGuiCond_Always);
++  ImGui::SetNextWindowSize(window_size, ImGuiCond_Always);
++  ImGui::SetNextWindowBgAlpha(0.45f);
++  const ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoNav |
++                                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
++                                 ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoScrollbar |
++                                 ImGuiWindowFlags_NoFocusOnAppearing;
++  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
++  if (ImGui::Begin("##fps_counter", nullptr, flags)) {
++    // Green at 55 FPS or more, yellow from 30, red below.
++    const ImU32 color = fps >= 55.0   ? IM_COL32(120, 255, 120, 255)
++                        : fps >= 30.0 ? IM_COL32(255, 220, 80, 255)
++                                      : IM_COL32(255, 90, 90, 255);
++    const ImVec2 origin = ImGui::GetWindowPos();
++    // AddText positions the top of the line box; shift so the ink starts at the padding.
++    ImGui::GetWindowDrawList()->AddText(
++        font, text_size, ImVec2(origin.x + pad_x - ink_left, origin.y + pad_y - ink_top), color, text);
+   }
+   ImGui::End();
 -  ImGui::PopStyleColor();
-+
++  ImGui::PopStyleVar();
  }
  
  }  // namespace rex::ui
@@ -3469,10 +4711,29 @@ index 7360ed9..d3db6a0 100644
        ++dxgi_ui_tick_last_vblank_;
      } else {
 diff --git a/src/ui/rex_app.cpp b/src/ui/rex_app.cpp
-index b94fe9e..b14890b 100644
+index b94fe9e..756b89a 100644
 --- a/src/ui/rex_app.cpp
 +++ b/src/ui/rex_app.cpp
-@@ -394,7 +394,7 @@ void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDraw
+@@ -20,6 +20,7 @@
+ #include <rex/filesystem.h>
+ #include <rex/logging/sink.h>
+ #include <rex/logging.h>
++#include <rex/ui/guide_font.h>
+ #include <rex/ui/overlay/achievement_toast.h>
+ #include <rex/ui/overlay/achievements_overlay.h>
+ #include <rex/ui/overlay/console_overlay.h>
+@@ -384,6 +385,10 @@ bool ReXApp::SetupPresentation() {
+   return true;
+ }
+ 
++void ReXApp::OnConfigureFonts(ImFontAtlas* atlas) {
++  (void)atlas;  // the game's UI fonts are loaded by the ImGui drawer itself
++}
++
+ void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDrawer* drawer) {
+   imgui_drawer_ = std::make_unique<rex::ui::ImGuiDrawer>(
+       window_.get(), 64, [this](ImFontAtlas* atlas) { OnConfigureFonts(atlas); },
+@@ -394,7 +399,7 @@ void ReXApp::SetupOverlays(rex::ui::Presenter* presenter, rex::ui::ImmediateDraw
    // gated eager font upload in SetImmediateDrawer is skipped (font uploads
    // lazily on the first Draw instead).
    imgui_drawer_->SetPresenterAndImmediateDrawer(presenter, drawer);
@@ -4215,200 +5476,3 @@ index f102b56..e23f430 100644
 +    target_compile_definitions(libavutil PRIVATE isatty=_isatty)
 +    target_compile_definitions(SDL3-static PRIVATE itoa=_itoa)
 +endif()
-diff --git a/include/rex/ui/vulkan/fence_wait_timing.h b/include/rex/ui/vulkan/fence_wait_timing.h
-new file mode 100644
---- /dev/null
-+++ b/include/rex/ui/vulkan/fence_wait_timing.h
-@@ -0,0 +1,67 @@
-+#pragma once
-+
-+#include <algorithm>
-+#include <chrono>
-+#include <rex/cvar.h>
-+#include <rex/logging.h>
-+
-+namespace rex::ui::vulkan {
-+
-+// Observe existing CPU fence waits without inserting any GPU operations.
-+class FenceWaitTiming {
-+ public:
-+  enum class Reason { Other, Resolve, Memexport, FrameReuse, ResourceReuse, Occlusion, OutputDescriptors, IntermediateImage, PaintPipeline, AcquireImage, Count };
-+  FenceWaitTiming(const char* role, const void* tracker,
-+                  Reason reason = Reason::Other, uint64_t fences = 1)
-+      : role_(role), tracker_(tracker), reason_(reason), fences_(fences) {
-+    // This diagnostic setting is selected before workers start, not hot-reloaded.
-+    static thread_local const bool enabled = REXCVAR_QUERY(bool, vulkan_log_fence_waits);
-+    enabled_ = enabled;
-+    if (enabled_) start_ = Clock::now();
-+  }
-+  ~FenceWaitTiming() {
-+    if (!enabled_) return;
-+    const auto now = Clock::now();
-+    const double ms = std::chrono::duration<double, std::milli>(now - start_).count();
-+    struct Stats {
-+      Clock::time_point start = Clock::now();
-+      uint64_t calls = 0, over_8ms = 0, fences = 0;
-+      double total = 0, maximum = 0;
-+    };
-+    static thread_local Stats all_stats[2][size_t(Reason::Count)];
-+    const size_t role_index = role_[0] == 'g' ? 0 : 1;
-+    Stats& stats = all_stats[role_index][size_t(reason_)];
-+    ++stats.calls;
-+    stats.fences += fences_;
-+    stats.over_8ms += ms > 8.0;
-+    stats.total += ms;
-+    stats.maximum = std::max(stats.maximum, ms);
-+    static thread_local Clock::time_point interval_start = Clock::now();
-+    if (now - interval_start < std::chrono::seconds(5)) return;
-+    constexpr const char* names[] = {"other", "resolve", "memexport", "frame_reuse",
-+                                    "resource_reuse", "occlusion", "output_descriptors",
-+                                    "intermediate_image", "paint_pipeline", "acquire_image"};
-+    for (size_t role = 0; role < 2; ++role) {
-+      for (size_t reason = 0; reason < size_t(Reason::Count); ++reason) {
-+        Stats& entry = all_stats[role][reason];
-+        if (!entry.calls) continue;
-+        REXLOG_INFO("VulkanFenceWait: role={} reason={} calls={} fences={} "
-+                    "total={:.3f}ms max={:.3f}ms over8ms={}",
-+                    role == 0 ? "guest" : "presenter", names[reason], entry.calls,
-+                    entry.fences, entry.total, entry.maximum, entry.over_8ms);
-+        entry = Stats{};
-+      }
-+    }
-+    interval_start = now;
-+  }
-+ private:
-+  using Clock = std::chrono::steady_clock;
-+  const char* role_;
-+  const void* tracker_;
-+  Reason reason_;
-+  uint64_t fences_;
-+  bool enabled_ = false;
-+  Clock::time_point start_{};
-+};
-+
-+}  // namespace rex::ui::vulkan
-diff --git a/src/graphics/shaders/bytecode/d3d12_5_1/float24_round_ps_position_only.h b/src/graphics/shaders/bytecode/d3d12_5_1/float24_round_ps_position_only.h
-new file mode 100644
---- /dev/null
-+++ b/src/graphics/shaders/bytecode/d3d12_5_1/float24_round_ps_position_only.h
-@@ -0,0 +1,73 @@
-+// Derived from float24_round_ps.h: identical depth instructions, SV_Position at v0.
-+// Generated by work/generate-position-only-depth.py; original licensing applies.
-+const BYTE float24_round_ps_position_only[] = {
-+  68, 88, 66, 67, 162, 99, 171, 178, 104, 88, 180, 227, 99, 114, 31, 75, 42, 220, 126, 82,
-+  1, 0, 0, 0, 100, 5, 0, 0, 5, 0, 0, 0, 52, 0, 0, 0, 160, 0, 0, 0,
-+  212, 0, 0, 0, 8, 1, 0, 0, 200, 4, 0, 0, 82, 68, 69, 70, 100, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 1, 5, 255, 255,
-+  0, 5, 0, 0, 60, 0, 0, 0, 19, 19, 68, 37, 60, 0, 0, 0, 24, 0, 0, 0,
-+  40, 0, 0, 0, 40, 0, 0, 0, 36, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0,
-+  77, 105, 99, 114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 72, 76, 83, 76, 32, 83,
-+  104, 97, 100, 101, 114, 32, 67, 111, 109, 112, 105, 108, 101, 114, 32, 49, 48, 46, 49, 0,
-+  73, 83, 71, 78, 44, 0, 0, 0, 1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0,
-+  0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 15, 4, 0, 0,
-+  83, 86, 95, 80, 111, 115, 105, 116, 105, 111, 110, 0, 79, 83, 71, 78, 44, 0, 0, 0,
-+  1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  3, 0, 0, 0, 255, 255, 255, 255, 1, 14, 0, 0, 83, 86, 95, 68, 101, 112, 116, 104,
-+  0, 171, 171, 171, 83, 72, 69, 88, 184, 3, 0, 0, 81, 0, 0, 0, 238, 0, 0, 0,
-+  106, 8, 0, 1, 100, 56, 0, 4, 66, 16, 16, 0, 0, 0, 0, 0, 1, 0, 0, 0,
-+  101, 0, 0, 2, 1, 192, 0, 0, 104, 0, 0, 2, 2, 0, 0, 0, 56, 32, 8, 7,
-+  18, 0, 16, 0, 0, 0, 0, 0, 42, 16, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
-+  0, 0, 0, 64, 80, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
-+  255, 255, 255, 127, 10, 0, 16, 0, 0, 0, 0, 0, 1, 0, 8, 7, 18, 0, 16, 0,
-+  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
-+  84, 0, 8, 7, 18, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0,
-+  1, 64, 0, 0, 248, 255, 255, 63, 140, 0, 16, 11, 34, 0, 16, 0, 0, 0, 0, 0,
-+  1, 64, 0, 0, 23, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0, 10, 0, 16, 0,
-+  0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 0, 85, 0, 32, 7, 66, 0, 16, 0,
-+  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 23, 0, 0, 0,
-+  30, 0, 32, 8, 66, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 128, 65, 0, 0, 0,
-+  0, 0, 0, 0, 1, 64, 0, 0, 113, 0, 0, 0, 84, 0, 32, 7, 66, 0, 16, 0,
-+  0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 24, 0, 0, 0,
-+  85, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
-+  42, 0, 16, 0, 0, 0, 0, 0, 79, 0, 32, 7, 66, 0, 16, 0, 0, 0, 0, 0,
-+  10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 56, 30, 0, 8, 7,
-+  18, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
-+  0, 0, 0, 200, 55, 0, 8, 9, 18, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0,
-+  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0,
-+  138, 0, 16, 9, 34, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 1, 0, 0, 0,
-+  1, 64, 0, 0, 3, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 30, 0, 8, 7,
-+  18, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0,
-+  0, 0, 0, 0, 30, 0, 8, 7, 18, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0,
-+  0, 0, 0, 0, 1, 64, 0, 0, 3, 0, 0, 0, 138, 0, 56, 15, 114, 0, 16, 0,
-+  0, 0, 0, 0, 2, 64, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 4, 0, 0, 0,
-+  0, 0, 0, 0, 2, 64, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0, 23, 0, 0, 0,
-+  0, 0, 0, 0, 6, 0, 16, 0, 0, 0, 0, 0, 135, 0, 64, 5, 130, 0, 16, 0,
-+  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 30, 0, 64, 7, 130, 0, 16, 0,
-+  0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 245, 255, 255, 255,
-+  55, 0, 64, 9, 130, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
-+  58, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 21, 0, 0, 0, 30, 0, 8, 8,
-+  18, 0, 16, 0, 1, 0, 0, 0, 58, 0, 16, 128, 65, 0, 0, 0, 0, 0, 0, 0,
-+  1, 64, 0, 0, 1, 0, 0, 0, 55, 0, 8, 9, 18, 0, 16, 0, 1, 0, 0, 0,
-+  42, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0,
-+  1, 0, 0, 0, 41, 0, 64, 7, 130, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0,
-+  0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 1, 0, 64, 7, 130, 0, 16, 0,
-+  0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 255, 255, 15, 0,
-+  55, 0, 16, 9, 34, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0,
-+  26, 0, 16, 0, 0, 0, 0, 0, 58, 0, 16, 0, 0, 0, 0, 0, 41, 0, 32, 7,
-+  66, 0, 16, 0, 0, 0, 0, 0, 10, 0, 16, 0, 1, 0, 0, 0, 1, 64, 0, 0,
-+  23, 0, 0, 0, 30, 0, 32, 7, 66, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0,
-+  0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 55, 41, 0, 16, 7, 34, 0, 16, 0,
-+  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 3, 0, 0, 0,
-+  30, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 42, 0, 16, 0, 0, 0, 0, 0,
-+  26, 0, 16, 0, 0, 0, 0, 0, 55, 0, 8, 8, 1, 192, 0, 0, 10, 0, 16, 0,
-+  0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0,
-+  62, 0, 0, 1, 83, 84, 65, 84, 148, 0, 0, 0, 30, 0, 0, 0, 2, 0, 0, 0,
-+  0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0,
-+  1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+};
-diff --git a/src/graphics/shaders/bytecode/d3d12_5_1/float24_truncate_ps_position_only.h b/src/graphics/shaders/bytecode/d3d12_5_1/float24_truncate_ps_position_only.h
-new file mode 100644
---- /dev/null
-+++ b/src/graphics/shaders/bytecode/d3d12_5_1/float24_truncate_ps_position_only.h
-@@ -0,0 +1,42 @@
-+// Derived from float24_truncate_ps.h: identical depth instructions, SV_Position at v0.
-+// Generated by work/generate-position-only-depth.py; original licensing applies.
-+const BYTE float24_truncate_ps_position_only[] = {
-+  68, 88, 66, 67, 58, 223, 9, 93, 150, 73, 58, 100, 233, 164, 57, 28, 8, 192, 95, 196,
-+  1, 0, 0, 0, 232, 2, 0, 0, 5, 0, 0, 0, 52, 0, 0, 0, 160, 0, 0, 0,
-+  212, 0, 0, 0, 16, 1, 0, 0, 76, 2, 0, 0, 82, 68, 69, 70, 100, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 1, 5, 255, 255,
-+  0, 5, 0, 0, 60, 0, 0, 0, 19, 19, 68, 37, 60, 0, 0, 0, 24, 0, 0, 0,
-+  40, 0, 0, 0, 40, 0, 0, 0, 36, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0,
-+  77, 105, 99, 114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 72, 76, 83, 76, 32, 83,
-+  104, 97, 100, 101, 114, 32, 67, 111, 109, 112, 105, 108, 101, 114, 32, 49, 48, 46, 49, 0,
-+  73, 83, 71, 78, 44, 0, 0, 0, 1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0,
-+  0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 15, 4, 0, 0,
-+  83, 86, 95, 80, 111, 115, 105, 116, 105, 111, 110, 0, 79, 83, 71, 78, 52, 0, 0, 0,
-+  1, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  3, 0, 0, 0, 255, 255, 255, 255, 1, 14, 0, 0, 83, 86, 95, 68, 101, 112, 116, 104,
-+  76, 101, 115, 115, 69, 113, 117, 97, 108, 0, 171, 171, 83, 72, 69, 88, 52, 1, 0, 0,
-+  81, 0, 0, 0, 77, 0, 0, 0, 106, 8, 0, 1, 100, 56, 0, 4, 66, 16, 16, 0,
-+  0, 0, 0, 0, 1, 0, 0, 0, 101, 0, 0, 2, 1, 112, 2, 0, 104, 0, 0, 2,
-+  1, 0, 0, 0, 56, 32, 8, 7, 18, 0, 16, 0, 0, 0, 0, 0, 42, 16, 16, 0,
-+  0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 64, 80, 0, 16, 7, 34, 0, 16, 0,
-+  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 128, 46,
-+  31, 0, 4, 3, 26, 0, 16, 0, 0, 0, 0, 0, 138, 0, 16, 9, 34, 0, 16, 0,
-+  0, 0, 0, 0, 1, 64, 0, 0, 8, 0, 0, 0, 1, 64, 0, 0, 23, 0, 0, 0,
-+  10, 0, 16, 0, 0, 0, 0, 0, 30, 0, 16, 8, 34, 0, 16, 0, 0, 0, 0, 0,
-+  26, 0, 16, 128, 65, 0, 0, 0, 0, 0, 0, 0, 1, 64, 0, 0, 116, 0, 0, 0,
-+  36, 0, 16, 7, 34, 0, 16, 0, 0, 0, 0, 0, 26, 0, 16, 0, 0, 0, 0, 0,
-+  1, 64, 0, 0, 3, 0, 0, 0, 140, 0, 8, 11, 18, 0, 16, 0, 0, 0, 0, 0,
-+  26, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0, 1, 64, 0, 0,
-+  0, 0, 0, 0, 10, 0, 16, 0, 0, 0, 0, 0, 18, 0, 0, 1, 54, 0, 8, 5,
-+  18, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0, 0, 0, 0, 0, 21, 0, 0, 1,
-+  56, 0, 8, 6, 1, 112, 2, 0, 10, 0, 16, 0, 0, 0, 0, 0, 1, 64, 0, 0,
-+  0, 0, 0, 63, 62, 0, 0, 1, 83, 84, 65, 84, 148, 0, 0, 0, 12, 0, 0, 0,
-+  1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0,
-+  1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-+  0, 0, 0, 0,
-+};

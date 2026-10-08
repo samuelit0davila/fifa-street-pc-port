@@ -44,3 +44,10 @@ settings.json
 *.bak
 Thumbs.db
 Desktop.ini
+
+# local backup copies
+*.bak_*
+*.before_*
+*.orig
+__pycache__/
+*.pyc
