@@ -8,7 +8,7 @@
 
 ### Ported by: SamuelitoDaVila
 
-[Download](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
+[Download](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) · [Video](https://www.youtube.com/watch?v=FiwdAOIHGFY) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
 
 <img src="docs/images/start-screen.png" alt="ReStreet running on PC" width="1000">
 
@@ -32,6 +32,12 @@ You need your own copy of the game: an Xbox 360 ISO of FIFA Street (2012). The I
 - Same game files as v0.4.1, so your saves and settings keep working. See the full [changelog](CHANGELOG.md).
 
 <img src="docs/images/launcher.png" alt="The ReStreet launcher" width="1000">
+
+## Gameplay video
+
+[![Watch ReStreet on YouTube](docs/images/gameplay-video.jpg)](https://www.youtube.com/watch?v=FiwdAOIHGFY)
+
+Installation, the new launcher and gameplay at 1440p 60 FPS. [Watch on YouTube](https://www.youtube.com/watch?v=FiwdAOIHGFY).
 
 ## Download and install
 
