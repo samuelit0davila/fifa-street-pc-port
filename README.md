@@ -8,7 +8,7 @@
 
 ### Ported by: SamuelitoDaVila
 
-[Download](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) · [Video](https://www.youtube.com/watch?v=FiwdAOIHGFY) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
+[Download](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) · [Video](https://www.youtube.com/watch?v=FiwdAOIHGFY) · [Discord](https://discord.gg/CqjYMGKyy2) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
 
 <img src="docs/images/start-screen.png" alt="ReStreet running on PC" width="1000">
 
@@ -50,6 +50,10 @@ To update from an earlier version, select the folder that contains `Game` and `G
 No compiler, Visual Studio or Internet connection is needed.
 
 <img src="docs/images/installer.png" alt="The ReStreet installer" width="900">
+
+## Community
+
+Join the **[ReStreet Discord](https://discord.gg/CqjYMGKyy2)** for downloads, help installing, bug reports, screenshots and the online beta.
 
 ## System requirements
 
