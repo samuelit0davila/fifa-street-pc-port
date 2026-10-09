@@ -8,7 +8,7 @@
 
 ### Ported by: SamuelitoDaVila
 
-[Download](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) · [Video](https://www.youtube.com/watch?v=FiwdAOIHGFY) · [Discord](https://discord.gg/CqjYMGKyy2) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
+[Download](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) · [Changelog](CHANGELOG.md) · [Report a bug](https://github.com/samuelit0davila/fifa-street-pc-port/issues) · [Build from source](docs/BUILDING.md)
 
 <img src="docs/images/start-screen.png" alt="ReStreet running on PC" width="1000">
 
@@ -20,7 +20,16 @@ ReStreet is a Windows PC version of FIFA Street (2012) made by recompiling the X
 
 You need your own copy of the game: an Xbox 360 ISO of FIFA Street (2012). The ISO and the game files are not included.
 
-**v1.0 is offline only.** It has no online play.
+**v1.1 is offline only.** It has no online play.
+
+## What's new in v1.1
+
+- **ReStreet main menu logo**, applied from the new `Mods` folder without changing your game files.
+- **Improved "Some" graphics readback**, now the default: less graphical garbage on floors and reflections, with the same speed.
+- **VSync works smoothly.** It keeps the game locked to your refresh rate with no tearing.
+- **Direct play:** start the game without the launcher window using `FifaStreetLauncher.exe --play`, or create a desktop shortcut with the new **Shortcut** button.
+- **Launcher and setup fit any screen**, at any resolution and Windows scale.
+- Your saves and settings are kept when you update. See the full [changelog](CHANGELOG.md).
 
 ## What's new in v1.0
 
@@ -33,12 +42,6 @@ You need your own copy of the game: an Xbox 360 ISO of FIFA Street (2012). The I
 
 <img src="docs/images/launcher.png" alt="The ReStreet launcher" width="1000">
 
-## Gameplay video
-
-[![Watch ReStreet on YouTube](docs/images/gameplay-video.jpg)](https://www.youtube.com/watch?v=FiwdAOIHGFY)
-
-Installation, the new launcher and gameplay at 1440p. [Watch on YouTube](https://www.youtube.com/watch?v=FiwdAOIHGFY).
-
 ## Download and install
 
 1. Download **FifaStreetSetup.exe** from the [latest release](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) and check its SHA-256 against the value on the release page.
@@ -50,10 +53,6 @@ To update from an earlier version, select the folder that contains `Game` and `G
 No compiler, Visual Studio or Internet connection is needed.
 
 <img src="docs/images/installer.png" alt="The ReStreet installer" width="900">
-
-## Community
-
-Join the **[ReStreet Discord](https://discord.gg/CqjYMGKyy2)** for downloads, help installing, bug reports, screenshots and the online beta.
 
 ## System requirements
 

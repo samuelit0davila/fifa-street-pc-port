@@ -24,6 +24,14 @@ internal static class Program
             bitmap.Save(args[1]);
             return;
         }
+        if (Array.Exists(args, a => a.Equals("--play", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Direct play: no window, starts the game with the settings saved by the launcher.
+            var direct = new LauncherForm();
+            direct.StartDirect();
+            Application.Run(direct);
+            return;
+        }
         Application.Run(new LauncherForm());
     }
 }

@@ -12,8 +12,11 @@ using ReStreet.Ui;
 
 namespace FifaStreetLauncher;
 
-public class LauncherForm : Form, ISceneHost
+public class LauncherForm : Form, ISceneHost, IUiScaled
 {
+    private readonly UiScaler scaler;
+    public float UiScale => scaler.Scale;
+
     private readonly Color Bg = StreetTheme.Asphalt;
     private readonly Color Surface = Color.FromArgb(28, 31, 36);
     private readonly Color SurfaceAlt = StreetTheme.Field;
@@ -84,8 +87,7 @@ public class LauncherForm : Form, ISceneHost
         using (var icon = typeof(LauncherForm).Assembly.GetManifestResourceStream("fifastreet.ico")!)
             Icon = new Icon(icon);
         ClientSize = new Size(1250, 720);
-        MinimumSize = new Size(1266, 759);
-        MaximumSize = new Size(1266, 1100);
+        scaler = new UiScaler(this, 1250, 720);
         DoubleBuffered = true;
         ResizeRedraw = true;
         HandleCreated += (_, _) => StreetTheme.ApplyDarkTitleBar(Handle);
@@ -95,8 +97,6 @@ public class LauncherForm : Form, ISceneHost
         BackColor = Bg;
         ForeColor = TextPrimary;
         Font = new Font("Segoe UI", 10F);
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
 
         BuildInterface();
         WireEvents();
@@ -109,7 +109,7 @@ public class LauncherForm : Form, ISceneHost
         UpdateRefreshRates();
         UpdateSummary();
         UpdateStatus("Ready to play", true);
-        FitToScreen();
+        scaler.Capture();
     }
 
     // Layout on an 8 px grid (design pixels, window 1250 x 720): left column margin 48; glass sheet
@@ -159,44 +159,11 @@ public class LauncherForm : Form, ISceneHost
         using (var bar = new SolidBrush(StreetTheme.Yellow)) g.FillPolygon(bar, StreetTheme.Slant(tag, 12));
         using (var tagFont = new Font(StreetTheme.CondensedFamily, 18, FontStyle.Bold, GraphicsUnit.Pixel))
         using (var dark = new SolidBrush(StreetTheme.YellowDark))
-            StreetTheme.DrawSpaced(g, "V1.0 · OFFLINE", tagFont, dark, new PointF(Left + 14, 246), 2.8f);
+            StreetTheme.DrawSpaced(g, "V1.1 · OFFLINE", tagFont, dark, new PointF(Left + 14, 246), 2.8f);
 
         using var name = new Font("Segoe UI", 15, FontStyle.Regular, GraphicsUnit.Pixel);
         StreetTheme.DrawLabelValue(g, "Ported by:", "SamuelitoDaVila", name, StreetTheme.Ink, StreetTheme.Ink, Left, 642);
         StreetTheme.DrawLabelValue(g, "Contributions:", "Emran_Ahm3d", name, StreetTheme.Muted, StreetTheme.Muted, Left, 665);
-    }
-
-    // On a screen too small for the window (for example 1366 x 768 laptops) everything shrinks together:
-    // control sizes, fonts and the backdrop, keeping the layout intact.
-    private void FitToScreen()
-    {
-        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
-        int availableHeight = area.Height, availableWidth = area.Width;
-        if (int.TryParse(Environment.GetEnvironmentVariable("RESTREET_WORKAREA_HEIGHT"), out int forced)) availableHeight = forced;
-        int chromeHeight = Height - ClientSize.Height, chromeWidth = Width - ClientSize.Width;
-        float f = Math.Min((availableHeight - chromeHeight) / (float)ClientSize.Height, (availableWidth - chromeWidth) / (float)ClientSize.Width);
-        if (f >= 0.995f) return;
-        f = Math.Max(f, 0.55f);
-        SuspendLayout();
-        MinimumSize = MaximumSize = Size.Empty;
-        ScaleFonts(this, f);
-        StreetTheme.FitScale = f;
-        Scale(new SizeF(f, f));
-        foreach (var combo in Controls.OfType<GlassCombo>().Concat(compatibilityPanel.Controls.OfType<GlassCombo>()))
-            combo.ItemHeight = Math.Max(16, (int)(28 * f));
-        ResumeLayout(true);
-        MinimumSize = new Size(Width, Height);
-        MaximumSize = new Size(Width, Height + (int)(380 * f));
-        Invalidate(true);
-    }
-
-    private static void ScaleFonts(Control root, float f)
-    {
-        foreach (Control child in root.Controls)
-        {
-            child.Font = new Font(child.Font.FontFamily, child.Font.Size * f, child.Font.Style, child.Font.Unit);
-            ScaleFonts(child, f);
-        }
     }
 
     private void BuildInterface()
@@ -254,13 +221,13 @@ public class LauncherForm : Form, ISceneHost
         };
         Controls.Add(tip);
 
-        // Bottom row: four equal buttons, 126 wide with 10 px gaps (4 x 126 + 3 x 10 = 534).
+        // Bottom row: five equal buttons, 100 wide with 8 px gaps (5 x 100 + 4 x 8 = 532).
         void Chip(SlantButton button, string text, int index)
         {
             button.Kind = SlantKind.Glass;
             button.Text = text;
             button.Font = StreetTheme.Body(10F);
-            button.Bounds = new Rectangle(ContentX + index * 136, 624, 126, 40);
+            button.Bounds = new Rectangle(ContentX + index * 108, 624, 100, 40);
             Controls.Add(button);
         }
         Chip(advancedButton, "Advanced", 0);
@@ -271,6 +238,9 @@ public class LauncherForm : Form, ISceneHost
         var folderButton = new SlantButton();
         folderButton.Click += (_, _) => OpenGameFolder();
         Chip(folderButton, "Open folder", 3);
+        var shortcutButton = new SlantButton();
+        shortcutButton.Click += (_, _) => CreateDesktopShortcut();
+        Chip(shortcutButton, "Shortcut", 4);
 
         ConfigureAdvancedPanel();
         Controls.Add(advancedPanel);
@@ -367,7 +337,7 @@ public class LauncherForm : Form, ISceneHost
 
         compatibilityPanel.Controls.Add(new ThemedLabel
         {
-            Text = "Readback Resolve: Full is the validated mode. Some and Fast give more FPS but may cause graphical corruption.",
+            Text = "Readback Resolve: Some is the recommended mode (more FPS with the validated fixes). Full is the most compatible; Fast gives more FPS but may cause graphical corruption.",
             Font = StreetTheme.Body(10F), ForeColor = TextSecondary,
             Bounds = new Rectangle(Pad, 204, PanelW - 2 * Pad, 20)
         });
@@ -440,13 +410,11 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
 
         if (advancedVisible)
         {
-            float k = ClientSize.Width / DesignW;
-            ClientSize = new Size(ClientSize.Width, (int)Math.Round(944 * k));
-            advancedPanel.Location = new Point((int)Math.Round(PanelX * k), (int)Math.Round(PanelY * k));
+            scaler.DesignHeight = 944;
         }
         else
         {
-            ClientSize = new Size(ClientSize.Width, (int)Math.Round(720 * ClientSize.Width / DesignW));
+            scaler.DesignHeight = 720;
         }
     }
 
@@ -466,13 +434,11 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
 
         if (compatibilityVisible)
         {
-            float k = ClientSize.Width / DesignW;
-            ClientSize = new Size(ClientSize.Width, (int)Math.Round(1000 * k));
-            compatibilityPanel.Location = new Point((int)Math.Round(PanelX * k), (int)Math.Round(PanelY * k));
+            scaler.DesignHeight = 1000;
         }
         else
         {
-            ClientSize = new Size(ClientSize.Width, (int)Math.Round(720 * ClientSize.Width / DesignW));
+            scaler.DesignHeight = 720;
         }
     }
 
@@ -593,11 +559,11 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         readbackResolveBox.Items.AddRange(new object[]
         {
             "Full (compatible)",
-            "Some (balanced)",
+            "Some (recommended)",
             "Fast (more FPS, may glitch)",
             "None (experimental)"
         });
-        readbackResolveBox.SelectedIndex = 0;
+        readbackResolveBox.SelectedIndex = 1;
 
         monitorBox.Items.Clear();
         foreach (var screen in Screen.AllScreens)
@@ -636,7 +602,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         readbackMemexportFastBox.Checked = true;
         clearMemoryPageStateBox.Checked = false;
         logFrameStatsBox.Checked = false;
-        occlusionQueryBox.Checked = true;
+        occlusionQueryBox.Checked = false;
         asyncShadersBox.Checked = true;
 
         vsyncBox.Checked = false;
@@ -959,6 +925,48 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         statusLabel.ForeColor = ok ? TextSecondary : Color.FromArgb(255, 120, 120);
     }
 
+    // Direct play (--play): the window stays invisible, the game starts with the saved settings and the
+    // launcher closes by itself after the game exits (it still restores the display mode first).
+    public void StartDirect()
+    {
+        closeAfterGame = true;
+        ShowInTaskbar = false;
+        Opacity = 0;
+        StartPosition = FormStartPosition.Manual;
+        Location = new Point(-32000, -32000);
+        Shown += (_, _) => LaunchGame();
+    }
+
+    private void CreateDesktopShortcut()
+    {
+        try
+        {
+            SaveSettings();
+            string desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            string target = Environment.ProcessPath ?? Application.ExecutablePath;
+            string path = Path.Combine(desktop, "ReStreet (direct play).lnk");
+            Type? shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType == null) throw new InvalidOperationException("Windows Script Host is not available.");
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            dynamic link = shell.CreateShortcut(path);
+            link.TargetPath = target;
+            link.Arguments = "--play";
+            link.WorkingDirectory = Path.GetDirectoryName(target);
+            link.IconLocation = target + ",0";
+            link.Description = "Start ReStreet directly with the settings saved in the launcher";
+            link.Save();
+            MessageBox.Show(
+                "A shortcut was created on your desktop: ReStreet (direct play)." + Environment.NewLine + Environment.NewLine +
+                "It starts the game straight away with the settings you have now. " +
+                "To change settings later, open the launcher normally and click Shortcut again to refresh it.",
+                "ReStreet Launcher", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Could not create the shortcut", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     private async void LaunchGame()
     {
         if (gameRunning) {
@@ -1106,8 +1114,10 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 fullscreen ? "true" : "false";
             startInfo.Environment["REX_MONITOR"] = (monitor + 1).ToString();
             startInfo.Environment["REX_LAUNCHER_MONITOR_DEVICE"] = Screen.AllScreens[monitor].DeviceName;
-            startInfo.Environment["REX_VSYNC"] =
-                vsyncBox.Checked ? "true" : "false";
+            // "VSync" is implemented as paced presentation: the game clock stays locked to the refresh rate and
+            // frames are presented without blocking the graphics queue. The real blocking VSync of the host swap chain
+            // made every GPU wait cost two vblanks (a few FPS), and it does not tear because tearing is not requested.
+            startInfo.Environment["REX_VSYNC"] = "false";
             startInfo.Environment["REX_NATIVE_2X_MSAA"] =
                 msaaBox.Checked ? "true" : "false";
             startInfo.Environment["REX_SWAP_POST_EFFECT"] = postEffect;
@@ -1132,9 +1142,11 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 startInfo.Environment["REX_RENDER_TARGET_PATH_VULKAN"] = "fbo";
                 // Override legacy TOML values: checked means FIFO, unchecked
                 // requests immediate presentation without display synchronization.
+                // With VSync on, prefer MAILBOX (latest frame wins, no tearing, never blocks the queue).
                 startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_IMMEDIATE"] =
                     vsyncBox.Checked ? "false" : "true";
-                startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_MAILBOX"] = "false";
+                startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_MAILBOX"] =
+                    vsyncBox.Checked ? "true" : "false";
                 startInfo.Environment["REX_VULKAN_ALLOW_PRESENT_MODE_FIFO_RELAXED"] =
                     vsyncBox.Checked ? "false" : "true";
             }
@@ -1390,8 +1402,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
             return;
         (int post, int scale, bool msaa, int readback, bool occlusion)? values = profileBox.SelectedIndex switch
         {
-            0 => (1, 0, false, 0, true),    // Balanced: the shipped defaults
-            1 => (2, 1, true, 0, true),     // Quality: 2x internal resolution, FXAA extreme, MSAA
+            0 => (1, 0, false, 1, false),   // Balanced: the shipped defaults (Some readback)
+            1 => (2, 1, true, 1, false),    // Quality: 2x internal resolution, FXAA extreme, MSAA (Some readback)
             2 => (0, 0, false, 2, false),   // Performance: native resolution, no post, faster readback
             _ => null
         };

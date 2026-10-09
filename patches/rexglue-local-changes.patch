@@ -27,7 +27,7 @@ index 9b3cdf5..51cf584 100644
  # Sanitizer support for debugging memory corruption and undefined behavior
  if(REXGLUE_ENABLE_SANITIZERS)
 diff --git a/include/rex/graphics/command_processor.h b/include/rex/graphics/command_processor.h
-index da8e432..0499356 100644
+index da8e432..5ba6484 100644
 --- a/include/rex/graphics/command_processor.h
 +++ b/include/rex/graphics/command_processor.h
 @@ -75,6 +75,7 @@ enum class GammaRampType {
@@ -38,7 +38,46 @@ index da8e432..0499356 100644
    enum class SwapPostEffect {
      kNone,
      kFxaa,
-@@ -244,6 +245,11 @@ class CommandProcessor {
+@@ -230,6 +231,38 @@ class CommandProcessor {
+   // Shared memexport readback enable state with backend legacy-flag override support.
+   bool IsReadbackMemexportEnabled(bool legacy_backend_flag) const;
+ 
++  // Adaptive "some" readback. `some` copies a resolve into guest memory only once per range, so that
++  // copy goes stale. When the guest later writes to pages overlapping such a range, shared memory
++  // re-uploads those pages from the stale copy over the newer GPU data, which shows up as garbage.
++  // Ranges that see such invalidations are refreshed on every resolve (like `fast`) for a while;
++  // the rest stay cheap.
++  struct SomeDecision {
++    bool refresh = false;  // copy this resolve into guest memory
++    bool sync = false;     // the copy slots are older than one frame: read the just-written one
++  };
++  // Render thread: counts one resolve of the range and decides whether to copy it into guest memory.
++  SomeDecision DecideSomeRefresh(uint64_t key, uint32_t address, uint32_t length, uint64_t frame);
++  void NoteSomeRangeSkipped(uint64_t key);
++  void NoteSomeRangeRefreshed(uint64_t key);
++  // Guest thread (called from the shared memory invalidation callback).
++  void OnGuestInvalidatedRange(uint32_t start, uint32_t length);
++
++  struct SomeRangeInfo {
++    uint32_t address = 0, length = 0;
++    uint32_t calls = 0, skipped = 0, refreshed = 0, hits = 0;
++    uint64_t hot_until_frame = 0;
++    uint64_t last_frame = 0;
++    uint64_t first_frame = 0;
++    uint32_t streak = 0;  // consecutive resolves on successive frames
++    bool stale = false;
++  };
++  std::mutex some_mutex_;
++  std::unordered_map<uint64_t, SomeRangeInfo> some_ranges_;
++  std::atomic<uint64_t> some_frame_{0};
++  uint32_t some_hit_logs_ = 0;
++  uint64_t some_decisions_ = 0;
++  uint64_t some_last_table_frame_ = 0;
++
+   memory::Memory* memory_ = nullptr;
+   system::KernelState* kernel_state_ = nullptr;
+   GraphicsSystem* graphics_system_ = nullptr;
+@@ -244,6 +277,11 @@ class CommandProcessor {
    std::vector<uint32_t> me_bin_;
  
    uint32_t counter_ = 0;
@@ -146,6 +185,38 @@ index 3b0fd61..be2c144 100644
  
      enum class DepthStencilMode : uint32_t {
        kNoModifiers,
+diff --git a/include/rex/graphics/shared_memory.h b/include/rex/graphics/shared_memory.h
+index 4d85a2b..4a57875 100644
+--- a/include/rex/graphics/shared_memory.h
++++ b/include/rex/graphics/shared_memory.h
+@@ -10,6 +10,7 @@
+  * @modified    Tom Clay, 2026 - Adapted for ReXGlue runtime
+  */
+ 
++#include <functional>
+ #include <cstdint>
+ #include <mutex>
+ #include <utility>
+@@ -79,6 +80,11 @@ class SharedMemory {
+   bool RequestRanges(const std::pair<uint32_t, uint32_t>* ranges, size_t count);
+   bool RequestRange(uint32_t start, uint32_t length);
+ 
++  // Called (from guest threads) with the page range invalidated by a guest write.
++  void SetInvalidationObserver(std::function<void(uint32_t, uint32_t)> observer) {
++    invalidation_observer_ = std::move(observer);
++  }
++
+   // Marks the range and, if not exact_range, potentially its surroundings
+   // (to up to the first GPU-written page, as an access violation exception
+   // count optimization) as modified by the CPU, also invalidating GPU-written
+@@ -154,6 +160,7 @@ class SharedMemory {
+   uint32_t host_gpu_memory_sparse_allocations_ = 0;
+   uint32_t host_gpu_memory_sparse_used_bytes_ = 0;
+ 
++  std::function<void(uint32_t, uint32_t)> invalidation_observer_;
+   void* memory_invalidation_callback_handle_ = nullptr;
+   void* memory_data_provider_handle_ = nullptr;
+ 
 diff --git a/include/rex/graphics/vulkan/command_processor.h b/include/rex/graphics/vulkan/command_processor.h
 index 696ff48..a2bdd15 100644
 --- a/include/rex/graphics/vulkan/command_processor.h
@@ -1255,8 +1326,96 @@ index 536009e..97f15f4 100644
    if (!g_csv_file)
      return;
  
+diff --git a/src/filesystem/devices/host_path_file.cpp b/src/filesystem/devices/host_path_file.cpp
+index 4c57a18..c0d97c9 100644
+--- a/src/filesystem/devices/host_path_file.cpp
++++ b/src/filesystem/devices/host_path_file.cpp
+@@ -12,8 +12,64 @@
+ #include <rex/filesystem/devices/host_path_entry.h>
+ #include <rex/filesystem/devices/host_path_file.h>
+ 
++#include <algorithm>
++#include <cstdio>
++#include <cstdlib>
++#include <cstring>
++#include <filesystem>
++#include <fstream>
++#include <mutex>
++#include <vector>
++
+ namespace rex::filesystem {
+ 
++namespace {
++
++// Byte patches served on top of game files, loaded from the folder named by FIFASTREET_MODS.
++// A patch is a file called "<game file>@<hex offset>.bin", for example "data1.big@1a2b000.bin":
++// its bytes replace the bytes of that game file at that offset whenever the game reads them.
++struct FilePatch {
++  std::string file;
++  uint64_t offset = 0;
++  std::vector<uint8_t> bytes;
++};
++
++std::vector<FilePatch>& Patches() {
++  static std::vector<FilePatch> patches;
++  static std::once_flag loaded;
++  std::call_once(loaded, [] {
++    // Folder of byte patches: FIFASTREET_MODS, or "Mods" next to the Game folder (<install>/Mods).
++    std::filesystem::path dir;
++    if (const char* env = std::getenv("FIFASTREET_MODS"); env && *env) {
++      dir = env;
++    } else {
++      dir = rex::filesystem::GetExecutableFolder().parent_path() / "Mods";
++    }
++    std::error_code ec;
++    if (!std::filesystem::is_directory(dir, ec)) return;
++    for (const auto& item : std::filesystem::directory_iterator(dir, ec)) {
++      if (!item.is_regular_file() || item.path().extension() != ".bin") continue;
++      std::string name = item.path().stem().string();
++      size_t at = name.rfind('@');
++      if (at == std::string::npos) continue;
++      FilePatch patch;
++      patch.file = name.substr(0, at);
++      std::transform(patch.file.begin(), patch.file.end(), patch.file.begin(), [](unsigned char c) { return char(std::tolower(c)); });
++      patch.offset = std::strtoull(name.c_str() + at + 1, nullptr, 16);
++      std::ifstream in(item.path(), std::ios::binary);
++      patch.bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
++      if (!patch.bytes.empty()) {
++        std::fprintf(stderr, "[mods] %s @0x%llx (%zu bytes)", patch.file.c_str(), (unsigned long long)patch.offset, patch.bytes.size());
++        std::fputc(10, stderr);
++        patches.push_back(std::move(patch));
++      }
++    }
++  });
++  return patches;
++}
++
++}  // namespace
++
+ HostPathFile::HostPathFile(uint32_t file_access, HostPathEntry* entry,
+                            std::unique_ptr<rex::filesystem::FileHandle> file_handle)
+     : File(file_access, entry), file_handle_(std::move(file_handle)) {}
+@@ -31,6 +87,18 @@ X_STATUS HostPathFile::ReadSync(std::span<uint8_t> buffer, size_t byte_offset,
+   }
+ 
+   if (file_handle_->Read(byte_offset, buffer.data(), buffer.size(), out_bytes_read)) {
++    const auto& patches = Patches();
++    if (!patches.empty() && entry_ && out_bytes_read) {
++      std::string name = entry_->name();
++      std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return char(std::tolower(c)); });
++      const uint64_t start = byte_offset, end = byte_offset + *out_bytes_read;
++      for (const auto& patch : patches) {
++        if (patch.file != name) continue;
++        const uint64_t patch_end = patch.offset + patch.bytes.size();
++        const uint64_t from = std::max(start, patch.offset), to = std::min(end, patch_end);
++        if (from < to) std::memcpy(buffer.data() + (from - start), patch.bytes.data() + (from - patch.offset), size_t(to - from));
++      }
++    }
+     return X_STATUS_SUCCESS;
+   } else {
+     return X_STATUS_END_OF_FILE;
 diff --git a/src/graphics/command_processor.cpp b/src/graphics/command_processor.cpp
-index a744375..5d1954e 100644
+index a744375..7970596 100644
 --- a/src/graphics/command_processor.cpp
 +++ b/src/graphics/command_processor.cpp
 @@ -37,6 +37,11 @@
@@ -1271,7 +1430,214 @@ index a744375..5d1954e 100644
  REXCVAR_DEFINE_BOOL(clear_memory_page_state, true, "GPU",
                      "Refresh page-valid state from GPU-written memory at frame end. "
                      "Disable for minor CPU overhead reduction, but may break memory coherency.")
-@@ -930,6 +935,33 @@ bool CommandProcessor::ExecutePacketType3_XE_SWAP(memory::RingBuffer* reader, ui
+@@ -54,6 +59,61 @@ REXCVAR_DEFINE_STRING(readback_resolve, "none", "GPU",
+     .allowed({"none", "fast", "some", "full"})
+     .lifecycle(rex::cvar::Lifecycle::kHotReload);
+ 
++REXCVAR_DEFINE_BOOL(readback_some_adaptive, true, "GPU",
++                    "In 'some' readback mode, refresh the guest-memory copy of a resolved range "
++                    "on every resolve once the guest has written to pages overlapping it "
++                    "(prevents stale data being re-uploaded over newer GPU data).")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_INT32(readback_some_hot_frames, 900, "GPU",
++                     "How many frames a range stays refreshed after the guest last invalidated it.")
++    .range(1, 100000)
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_BOOL(readback_some_refresh_sporadic, true, "GPU",
++                    "In 'some' readback mode, always refresh ranges that are not resolved on "
++                    "every frame (textures the game builds from GPU results, for example while "
++                    "loading). Only ranges resolved every frame are skipped.")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_STRING(readback_some_skip_addrs, "", "GPU",
++                      "Comma separated hex start addresses of resolve ranges that 'some' readback "
++                      "never refreshes (diagnostics).")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_STRING(readback_some_sync_addrs, "1282B000", "GPU",
++                      "Comma separated hex start addresses of resolve ranges that 'some' readback "
++                      "always refreshes and reads synchronously (diagnostics).")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_INT32(readback_some_sync_below, 3145728, "GPU",
++                     "In 'some' readback mode, ranges smaller than this many bytes that are "
++                     "refreshed are read synchronously for the current frame (like 'full'), "
++                     "instead of one frame late. 0 = off.")
++    .range(0, 1 << 28)
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_BOOL(readback_some_sporadic_sync, true, "GPU",
++                    "Read sporadic ranges synchronously (current frame), like 'full'. They are "
++                    "rare, so this costs almost nothing, and the game may build textures from them.")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_INT32(readback_some_refresh_interval, 0, "GPU",
++                     "In 'some' readback mode, also refresh every range once every N resolves "
++                     "(0 = never). Bounds how stale the guest copy can get.")
++    .range(0, 100000)
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_INT32(readback_some_refresh_below, 3145728, "GPU",
++                     "In 'some' readback mode, always refresh ranges smaller than this many bytes "
++                     "(cheap to copy). 0 = off.")
++    .range(0, 1 << 28)
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
++REXCVAR_DEFINE_BOOL(readback_some_log, false, "GPU",
++                    "Log the adaptive 'some' readback decisions and guest invalidations.")
++    .lifecycle(rex::cvar::Lifecycle::kHotReload);
++
+ REXCVAR_DEFINE_BOOL(readback_resolve_half_pixel_offset, false, "GPU",
+                     "When draw resolution scaling is active, sample from the center of each "
+                     "scaled block during resolve readback downscale")
+@@ -181,6 +241,144 @@ ReadbackResolveMode CommandProcessor::GetReadbackResolveMode(
+                                          : ReadbackResolveMode::kDisabled;
+ }
+ 
++namespace {
++// Parses a comma separated list of hex addresses; cached by string value.
++bool AddressInList(const std::string& list, uint32_t address) {
++  size_t pos = 0;
++  while (pos < list.size()) {
++    size_t end = list.find(',', pos);
++    if (end == std::string::npos) {
++      end = list.size();
++    }
++    if (end > pos) {
++      const uint32_t value = uint32_t(std::strtoul(list.substr(pos, end - pos).c_str(), nullptr, 16));
++      if (value == address) {
++        return true;
++      }
++    }
++    pos = end + 1;
++  }
++  return false;
++}
++}  // namespace
++
++CommandProcessor::SomeDecision CommandProcessor::DecideSomeRefresh(uint64_t key, uint32_t address,
++                                                                    uint32_t length,
++                                                                    uint64_t frame) {
++  some_frame_.store(frame, std::memory_order_relaxed);
++  SomeDecision decision;
++  std::lock_guard<std::mutex> lock(some_mutex_);
++  SomeRangeInfo& info = some_ranges_[key];
++  info.address = address;
++  info.length = length;
++  ++info.calls;
++  // Frame cadence of this range. Several resolves in one frame say nothing, so they keep the streak.
++  if (info.last_frame != 0 && frame > info.last_frame) {
++    if (frame - info.last_frame <= 2) {
++      ++info.streak;
++    } else {
++      info.streak = 0;
++    }
++  }
++  info.last_frame = frame;
++  if (info.first_frame == 0) {
++    info.first_frame = frame;
++  }
++  // Only a range resolved on at least half of all frames since it was first seen counts as "every frame";
++  // one that is merely resolved in bursts keeps being refreshed.
++  const uint64_t age = frame - info.first_frame;
++  const bool every_frame = info.streak >= 8 && age >= 1200 && uint64_t(info.calls) * 2 >= age;
++  const int32_t interval = REXCVAR_GET(readback_some_refresh_interval);
++  const int32_t below = REXCVAR_GET(readback_some_refresh_below);
++  if (REXCVAR_GET(readback_some_adaptive) && frame <= info.hot_until_frame) {
++    decision.refresh = true;
++  } else if (REXCVAR_GET(readback_some_refresh_sporadic) && !every_frame) {
++    decision.refresh = true;
++    decision.sync = REXCVAR_GET(readback_some_sporadic_sync);
++  } else if (interval > 0 && info.calls % uint32_t(interval) == 0) {
++    decision.refresh = true;
++  } else if (below > 0 && length < uint32_t(below)) {
++    decision.refresh = true;
++  }
++  ++some_decisions_;
++  if (REXCVAR_GET(readback_some_log) && frame >= some_last_table_frame_ + 600) {
++    some_last_table_frame_ = frame;
++    std::vector<std::pair<uint64_t, const SomeRangeInfo*>> rows;
++    for (const auto& [row_key, row] : some_ranges_) {
++      rows.emplace_back(row_key, &row);
++    }
++    std::sort(rows.begin(), rows.end(), [](const auto& a, const auto& b) {
++      return uint64_t(a.second->length) * a.second->calls > uint64_t(b.second->length) * b.second->calls;
++    });
++    REXGPU_INFO("[SOMETABLE] frame={} ranges={} (sorted by bytes resolved)", frame, rows.size());
++    for (size_t i = 0; i < rows.size() && i < 40; ++i) {
++      const SomeRangeInfo& row = *rows[i].second;
++      REXGPU_INFO(
++          "[SOMETABLE] {:08X}+{:X} ({:.2f} MB) calls={} skipped={} refreshed={} streak={} hits={} stale={}",
++          row.address, row.length, row.length / 1048576.0, row.calls, row.skipped, row.refreshed,
++          row.streak, row.hits, row.stale);
++    }
++  }
++  // After skipped resolves the double-buffer slots hold old data, so the first refresh must read
++  // the slot that was just written.
++  const int32_t sync_below = REXCVAR_GET(readback_some_sync_below);
++  if (decision.refresh && sync_below > 0 && length < uint32_t(sync_below)) {
++    decision.sync = true;
++  }
++  decision.sync = decision.sync || (decision.refresh && info.stale);
++  const std::string skip_addrs = REXCVAR_GET(readback_some_skip_addrs);
++  const std::string sync_addrs = REXCVAR_GET(readback_some_sync_addrs);
++  if (!skip_addrs.empty() && AddressInList(skip_addrs, address)) {
++    decision = SomeDecision{};
++  } else if (!sync_addrs.empty() && AddressInList(sync_addrs, address)) {
++    decision.refresh = true;
++    decision.sync = true;
++  }
++  return decision;
++}
++
++void CommandProcessor::NoteSomeRangeSkipped(uint64_t key) {
++  std::lock_guard<std::mutex> lock(some_mutex_);
++  SomeRangeInfo& info = some_ranges_[key];
++  ++info.skipped;
++  info.stale = true;
++}
++
++void CommandProcessor::NoteSomeRangeRefreshed(uint64_t key) {
++  std::lock_guard<std::mutex> lock(some_mutex_);
++  SomeRangeInfo& info = some_ranges_[key];
++  ++info.refreshed;
++  info.stale = false;
++}
++
++void CommandProcessor::OnGuestInvalidatedRange(uint32_t start, uint32_t length) {
++  if (!length) {
++    return;
++  }
++  const uint64_t end = uint64_t(start) + length;
++  const uint64_t frame = some_frame_.load(std::memory_order_relaxed);
++  const bool log = REXCVAR_GET(readback_some_log);
++  const uint64_t hot_frames = uint64_t(REXCVAR_GET(readback_some_hot_frames));
++  std::lock_guard<std::mutex> lock(some_mutex_);
++  for (auto& [key, info] : some_ranges_) {
++    if (uint64_t(info.address) >= end || uint64_t(info.address) + info.length <= start) {
++      continue;
++    }
++    ++info.hits;
++    if (info.stale) {
++      info.hot_until_frame = frame + hot_frames;
++    }
++    if (log && some_hit_logs_ < 200) {
++      ++some_hit_logs_;
++      REXGPU_INFO(
++          "[SOME] guest invalidated {:08X}+{:X} over range {:08X}+{:X} (key {:016X}, calls={} "
++          "skipped={} refreshed={} stale={} hits={})",
++          start, length, info.address, info.length, key, info.calls, info.skipped, info.refreshed,
++          info.stale, info.hits);
++    }
++  }
++}
++
+ bool CommandProcessor::IsReadbackMemexportEnabled(bool legacy_backend_flag) const {
+   if (legacy_readback_memexport_cvar_name_ &&
+       rex::cvar::HasNonDefaultValue(legacy_readback_memexport_cvar_name_)) {
+@@ -930,6 +1128,33 @@ bool CommandProcessor::ExecutePacketType3_XE_SWAP(memory::RingBuffer* reader, ui
                                                    uint32_t count) {
    SCOPE_profile_cpu_f("gpu");
  
@@ -1305,7 +1671,7 @@ index a744375..5d1954e 100644
  #ifdef REXGLUE_ENABLE_PERF_COUNTERS
    {
      static uint64_t last_frame_tick = 0;
-@@ -943,6 +975,7 @@ bool CommandProcessor::ExecutePacketType3_XE_SWAP(memory::RingBuffer* reader, ui
+@@ -943,6 +1168,7 @@ bool CommandProcessor::ExecutePacketType3_XE_SWAP(memory::RingBuffer* reader, ui
      last_frame_tick = now;
    }
  #endif
@@ -1314,7 +1680,7 @@ index a744375..5d1954e 100644
  
    // Xenia-specific VdSwap hook.
 diff --git a/src/graphics/d3d12/command_processor.cpp b/src/graphics/d3d12/command_processor.cpp
-index 19874a5..054a8f3 100644
+index 19874a5..a75c56d 100644
 --- a/src/graphics/d3d12/command_processor.cpp
 +++ b/src/graphics/d3d12/command_processor.cpp
 @@ -10,6 +10,7 @@
@@ -1344,7 +1710,16 @@ index 19874a5..054a8f3 100644
  REXCVAR_DEFINE_BOOL(d3d12_readback_memexport, false, "GPU/D3D12",
                      "Read data written by memory export in shaders on the CPU")
      .lifecycle(rex::cvar::Lifecycle::kHotReload);
-@@ -1672,6 +1685,11 @@ void D3D12CommandProcessor::ShutdownContext() {
+@@ -930,6 +943,8 @@ bool D3D12CommandProcessor::SetupContext() {
+     REXGPU_ERROR("Failed to initialize shared memory");
+     return false;
+   }
++  shared_memory_->SetInvalidationObserver(
++      [this](uint32_t start, uint32_t length) { OnGuestInvalidatedRange(start, length); });
+ 
+   // Initialize the render target cache before configuring binding - need to
+   // know if using rasterizer-ordered views for the bindless root signature.
+@@ -1672,6 +1687,11 @@ void D3D12CommandProcessor::ShutdownContext() {
    scratch_buffer_size_ = 0;
    resolve_downscale_buffer_size_ = 0;
    resolve_downscale_buffer_.Reset();
@@ -1356,7 +1731,17 @@ index 19874a5..054a8f3 100644
  
    for (const std::pair<uint64_t, ID3D12Resource*>& resource_for_deletion :
         resources_for_deletion_) {
-@@ -2784,6 +2802,11 @@ bool D3D12CommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_s
+@@ -1735,6 +1755,9 @@ void D3D12CommandProcessor::ShutdownContext() {
+ 
+   render_target_cache_.reset();
+ 
++  if (shared_memory_) {
++    shared_memory_->SetInvalidationObserver(nullptr);
++  }
+   shared_memory_.reset();
+ 
+   deferred_command_list_.Reset();
+@@ -2784,6 +2807,11 @@ bool D3D12CommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_s
        MakeMemexportReadbackKey(memexport_ranges_.front().base_address_dwords, total_size);
    ReadbackBuffer& readback = memexport_readback_buffers_[readback_key];
    readback.last_used_frame = frame_current_;
@@ -1368,7 +1753,7 @@ index 19874a5..054a8f3 100644
  
    auto ensure_readback_slot = [&](uint32_t index, uint32_t size) -> bool {
      if (readback.buffers[index] && readback.mapped_data[index] && size <= readback.sizes[index]) {
-@@ -2847,11 +2870,13 @@ bool D3D12CommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_s
+@@ -2847,11 +2875,13 @@ bool D3D12CommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_s
    }
    readback.submission_written[write_index] = submission_current_;
    readback.written_size[write_index] = total_size;
@@ -1382,7 +1767,7 @@ index 19874a5..054a8f3 100644
                               readback.submission_written[read_index] &&
                               readback.submission_written[read_index] <= submission_completed_;
    if (!previous_slot_ready) {
-@@ -2887,6 +2912,54 @@ bool D3D12CommandProcessor::IssueCopy() {
+@@ -2887,6 +2917,54 @@ bool D3D12CommandProcessor::IssueCopy() {
  }
  
  bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
@@ -1437,7 +1822,7 @@ index 19874a5..054a8f3 100644
    uint32_t written_address, written_length;
    if (!render_target_cache_->Resolve(*memory_, *shared_memory_, *texture_cache_, written_address,
                                       written_length)) {
-@@ -2897,14 +2970,34 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -2897,14 +2975,39 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
      return true;
    }
  
@@ -1465,14 +1850,19 @@ index 19874a5..054a8f3 100644
 +  // Some only copies into guest memory on a cache miss. Once both slots are
 +  // initialized, recording another GPU-to-CPU copy cannot change its result.
 +  // Keep Resolve above: subsequent draws still need the GPU-side texture data.
-+  if (readback_mode == ReadbackResolveMode::kSome && rb.mapped_data[0] && rb.mapped_data[1] &&
-+      rb.written_size[0] >= written_length && rb.written_size[1] >= written_length) {
-+    return true;
++  SomeDecision some_decision;
++  if (readback_mode == ReadbackResolveMode::kSome) {
++    some_decision = DecideSomeRefresh(resolve_key, written_address, written_length, frame_current_);
++    if (!some_decision.refresh && rb.mapped_data[0] && rb.mapped_data[1] &&
++        rb.written_size[0] >= written_length && rb.written_size[1] >= written_length) {
++      NoteSomeRangeSkipped(resolve_key);
++      return true;
++    }
 +  }
  
    uint32_t write_index = rb.current_index;
    uint32_t size = AlignReadbackBufferSize(written_length);
-@@ -2922,6 +3015,10 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -2922,6 +3025,10 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
        return true;
      }
      if (rb.buffers[write_index]) {
@@ -1483,7 +1873,7 @@ index 19874a5..054a8f3 100644
        if (rb.mapped_data[write_index]) {
          rb.buffers[write_index]->Unmap(0, nullptr);
          rb.mapped_data[write_index] = nullptr;
-@@ -3055,6 +3152,10 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -3055,6 +3162,10 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
      PushTransitionBarrier(resolve_downscale_buffer_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                            D3D12_RESOURCE_STATE_COPY_SOURCE);
      SubmitBarriers();
@@ -1494,7 +1884,7 @@ index 19874a5..054a8f3 100644
      deferred_command_list_.D3DCopyBufferRegion(rb.buffers[write_index], 0,
                                                 resolve_downscale_buffer_.Get(), 0, written_length);
      PushTransitionBarrier(resolve_downscale_buffer_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
-@@ -3065,20 +3166,62 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -3065,23 +3176,65 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
      shared_memory_->UseAsCopySource();
      SubmitBarriers();
      ID3D12Resource* shared_memory_buffer = shared_memory_->GetBuffer();
@@ -1558,12 +1948,21 @@ index 19874a5..054a8f3 100644
 +    }
 +  }
    bool is_cache_miss = false;
-   if (use_delayed_sync && (!rb.buffers[read_index] || written_length > rb.sizes[read_index] ||
-                            !rb.mapped_data[read_index])) {
-@@ -3090,6 +3233,13 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+-  if (use_delayed_sync && (!rb.buffers[read_index] || written_length > rb.sizes[read_index] ||
+-                           !rb.mapped_data[read_index])) {
++  if (use_delayed_sync && (some_decision.sync || !rb.buffers[read_index] ||
++                           written_length > rb.sizes[read_index] || !rb.mapped_data[read_index])) {
+     is_cache_miss = true;
+     read_index = write_index;
+     if (!AwaitAllQueueOperationsCompletion()) {
+@@ -3089,7 +3242,16 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+     }
    }
  
-   bool should_copy = (readback_mode == ReadbackResolveMode::kSome) ? is_cache_miss : true;
+-  bool should_copy = (readback_mode == ReadbackResolveMode::kSome) ? is_cache_miss : true;
++  bool should_copy = (readback_mode == ReadbackResolveMode::kSome)
++                         ? (is_cache_miss || some_decision.refresh)
++                         : true;
 +  if (should_copy && rb.submission_written[read_index] &&
 +      rb.submission_written[read_index] > submission_completed_) {
 +    CheckSubmissionFence(rb.submission_written[read_index]);
@@ -1574,8 +1973,17 @@ index 19874a5..054a8f3 100644
    if (should_copy && rb.buffers[read_index] && written_length <= rb.sizes[read_index] &&
        rb.mapped_data[read_index]) {
      uint8_t* destination = memory_->TranslatePhysical(written_address);
-@@ -3099,10 +3249,67 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -3097,12 +3259,76 @@ bool D3D12CommandProcessor::IssueCopy_ReadbackResolvePath() {
+       std::memcpy(destination, static_cast<uint8_t*>(rb.mapped_data[read_index]), written_length);
+     }
    }
++  if (readback_mode == ReadbackResolveMode::kSome) {
++    if (should_copy) {
++      NoteSomeRangeRefreshed(resolve_key);
++    } else {
++      NoteSomeRangeSkipped(resolve_key);
++    }
++  }
  
    rb.current_index = 1 - rb.current_index;
 +  if (measure) {
@@ -1643,7 +2051,7 @@ index 19874a5..054a8f3 100644
    if (await_submission >= submission_current_) {
      if (submission_open_) {
        EndSubmission(false);
-@@ -3114,9 +3321,9 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
+@@ -3114,9 +3340,9 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
      if (queue_operations_done_since_submission_signal_) {
        UINT64 fence_value = ++queue_operations_since_submission_fence_last_;
        ID3D12CommandQueue* direct_queue = GetD3D12Provider().GetDirectQueue();
@@ -1656,7 +2064,7 @@ index 19874a5..054a8f3 100644
          PROFILE_CMD_BUFFER_STALL();
          WaitForSingleObject(fence_completion_event_, INFINITE);
          queue_operations_done_since_submission_signal_ = false;
-@@ -3131,8 +3338,22 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
+@@ -3131,8 +3357,22 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
      await_submission = submission_current_ - 1;
    }
  
@@ -1679,7 +2087,7 @@ index 19874a5..054a8f3 100644
    if (submission_completed_ < await_submission) {
      if (SUCCEEDED(
              submission_fence_->SetEventOnCompletion(await_submission, fence_completion_event_))) {
-@@ -3144,6 +3365,23 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
+@@ -3144,6 +3384,23 @@ void D3D12CommandProcessor::CheckSubmissionFence(uint64_t await_submission) {
    if (submission_completed_ < await_submission) {
      REXGPU_ERROR("Failed to await a submission completion Direct3D 12 fence");
    }
@@ -1703,7 +2111,7 @@ index 19874a5..054a8f3 100644
    if (submission_completed_ <= submission_completed_before) {
      // Not updated - no need to reclaim or download things.
      return;
-@@ -3302,6 +3540,12 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
+@@ -3302,6 +3559,12 @@ bool D3D12CommandProcessor::BeginSubmission(bool is_guest_command) {
      // end of the submission (when async pipeline creation requests are
      // fulfilled).
      deferred_command_list_.Reset();
@@ -1716,7 +2124,7 @@ index 19874a5..054a8f3 100644
  
      // Reset cached state of the command list.
      ff_viewport_update_needed_ = true;
-@@ -4432,7 +4676,7 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
+@@ -4432,7 +4695,7 @@ bool D3D12CommandProcessor::UpdateBindings(const D3D12Shader* vertex_shader,
        for (size_t i = 0; i < texture_count_pixel; ++i) {
          const D3D12Shader::TextureBinding& texture = (*textures_pixel)[i];
          descriptor_indices[texture.bindless_descriptor_index] =
@@ -1725,7 +2133,7 @@ index 19874a5..054a8f3 100644
              uint32_t(SystemBindlessView::kUnboundedSRVsStart);
        }
        current_texture_layout_uid_pixel_ = texture_layout_uid_pixel;
-@@ -4755,7 +4999,10 @@ void D3D12CommandProcessor::EvictOldReadbackBuffers(
+@@ -4755,7 +5018,10 @@ void D3D12CommandProcessor::EvictOldReadbackBuffers(
      ReadbackBuffer& readback = it->second;
      bool evict =
          buffer_map.size() > kMaxReadbackBuffers || readback.last_used_frame < eviction_frame_floor;
@@ -2452,6 +2860,22 @@ index 0000000..fb3ad69
 +  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 +  0, 0, 0, 0,
 +};
+diff --git a/src/graphics/shared_memory.cpp b/src/graphics/shared_memory.cpp
+index ec0df7c..2ac72b9 100644
+--- a/src/graphics/shared_memory.cpp
++++ b/src/graphics/shared_memory.cpp
+@@ -530,6 +530,11 @@ std::pair<uint32_t, uint32_t> SharedMemory::MemoryInvalidationCallback(
+ 
+   FireWatches(page_first, page_last, false);
+ 
++  if (invalidation_observer_) {
++    invalidation_observer_(page_first << page_size_log2_,
++                           (page_last - page_first + 1) << page_size_log2_);
++  }
++
+   return std::make_pair(page_first << page_size_log2_, (page_last - page_first + 1)
+                                                            << page_size_log2_);
+ }
 diff --git a/src/graphics/util/draw_extent_estimator.cpp b/src/graphics/util/draw_extent_estimator.cpp
 index 3027dc8..54f77a9 100644
 --- a/src/graphics/util/draw_extent_estimator.cpp
@@ -2466,7 +2890,7 @@ index 3027dc8..54f77a9 100644
  
  REXCVAR_DEFINE_BOOL(execute_unclipped_draw_vs_on_cpu_with_scissor, false, "GPU",
 diff --git a/src/graphics/vulkan/command_processor.cpp b/src/graphics/vulkan/command_processor.cpp
-index 001f36b..8f35864 100644
+index 001f36b..71fee31 100644
 --- a/src/graphics/vulkan/command_processor.cpp
 +++ b/src/graphics/vulkan/command_processor.cpp
 @@ -11,6 +11,7 @@
@@ -2507,7 +2931,26 @@ index 001f36b..8f35864 100644
  REXCVAR_DEFINE_BOOL(vulkan_readback_resolve, false, "GPU/Vulkan",
                      "Read render-to-texture results on the CPU")
      .lifecycle(rex::cvar::Lifecycle::kHotReload);
-@@ -2059,10 +2073,16 @@ void VulkanCommandProcessor::ShutdownContext() {
+@@ -896,6 +910,8 @@ bool VulkanCommandProcessor::SetupContext() {
+     REXGPU_ERROR("Failed to initialize shared memory");
+     return false;
+   }
++  shared_memory_->SetInvalidationObserver(
++      [this](uint32_t start, uint32_t length) { OnGuestInvalidatedRange(start, length); });
+ 
+   primitive_processor_ =
+       std::make_unique<VulkanPrimitiveProcessor>(*register_file_, *memory_, *shared_memory_, *this);
+@@ -2026,6 +2042,9 @@ void VulkanCommandProcessor::ShutdownContext() {
+ 
+   primitive_processor_.reset();
+ 
++  if (shared_memory_) {
++    shared_memory_->SetInvalidationObserver(nullptr);
++  }
+   shared_memory_.reset();
+ 
+   ClearTransientDescriptorPools();
+@@ -2059,10 +2078,16 @@ void VulkanCommandProcessor::ShutdownContext() {
  
    deferred_command_buffer_.Reset();
    for (const auto& command_buffer_pair : command_buffers_submitted_) {
@@ -2524,7 +2967,7 @@ index 001f36b..8f35864 100644
      dfn.vkDestroyCommandPool(device, command_buffer.pool, nullptr);
    }
    command_buffers_writable_.clear();
-@@ -3822,7 +3842,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+@@ -3822,7 +3847,7 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
      uint64_t sampler_overflow_await_submission =
          texture_cache_->GetSubmissionToAwaitOnSamplerOverflow(samplers_overflowed_count);
      assert_true(sampler_overflow_await_submission <= GetCurrentSubmission());
@@ -2533,7 +2976,7 @@ index 001f36b..8f35864 100644
    }
  
    uint32_t normalized_color_mask =
-@@ -4154,6 +4174,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
+@@ -4154,6 +4179,8 @@ bool VulkanCommandProcessor::IssueDraw(xenos::PrimitiveType prim_type, uint32_t
                                                0, 0, 0);
    }
  
@@ -2542,7 +2985,7 @@ index 001f36b..8f35864 100644
    // Invalidate textures in memexported memory and watch for changes.
    if (!memexport_ranges_.empty()) {
      for (const draw_util::MemExportRange& memexport_range : memexport_ranges_) {
-@@ -4222,7 +4244,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFullPath(uint32_t total_
+@@ -4222,7 +4249,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFullPath(uint32_t total_
                            VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
                            VK_ACCESS_HOST_READ_BIT);
  
@@ -2551,7 +2994,7 @@ index 001f36b..8f35864 100644
      REXGPU_ERROR("Failed to await completion of Vulkan memexport readback");
      dfn.vkDestroyBuffer(device, readback_buffer, nullptr);
      dfn.vkFreeMemory(device, readback_memory, nullptr);
-@@ -4297,7 +4319,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_
+@@ -4297,7 +4324,7 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_
      }
  
      if (readback.buffers[index] != VK_NULL_HANDLE || readback.memories[index] != VK_NULL_HANDLE) {
@@ -2560,7 +3003,7 @@ index 001f36b..8f35864 100644
          dfn.vkUnmapMemory(device, new_memory);
          dfn.vkDestroyBuffer(device, new_buffer, nullptr);
          dfn.vkFreeMemory(device, new_memory, nullptr);
-@@ -4381,6 +4403,11 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_
+@@ -4381,6 +4408,11 @@ bool VulkanCommandProcessor::IssueDraw_MemexportReadbackFastPath(uint32_t total_
    return true;
  }
  
@@ -2572,7 +3015,7 @@ index 001f36b..8f35864 100644
  bool VulkanCommandProcessor::IssueCopy() {
  #if XE_GPU_FINE_GRAINED_DRAW_SCOPES
    SCOPE_profile_cpu_f("gpu");
-@@ -4448,7 +4475,7 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -4448,7 +4480,7 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
      }
  
      if (readback.buffers[index] != VK_NULL_HANDLE || readback.memories[index] != VK_NULL_HANDLE) {
@@ -2581,7 +3024,18 @@ index 001f36b..8f35864 100644
          dfn.vkUnmapMemory(device, new_memory);
          dfn.vkDestroyBuffer(device, new_buffer, nullptr);
          dfn.vkFreeMemory(device, new_memory, nullptr);
-@@ -4515,7 +4542,20 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -4476,6 +4508,10 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+   uint64_t resolve_key = MakeReadbackResolveKey(written_address, written_length);
+   ReadbackBuffer& readback = readback_buffers_[resolve_key];
+   readback.last_used_frame = frame_current_;
++  SomeDecision some_decision;
++  if (readback_mode == ReadbackResolveMode::kSome) {
++    some_decision = DecideSomeRefresh(resolve_key, written_address, written_length, frame_current_);
++  }
+   uint32_t write_index = readback.current_index;
+   uint32_t readback_size = AlignReadbackBufferSize(written_length);
+   if (!ensure_readback_slot(readback, write_index, readback_size)) {
+@@ -4515,7 +4551,20 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
      }
  
      VkBuffer scaled_resolve_buffer = texture_cache_->scaled_resolve_buffer();
@@ -2603,7 +3057,7 @@ index 001f36b..8f35864 100644
        return true;
      }
  
-@@ -4533,7 +4573,7 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -4533,7 +4582,7 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
        }
        if (resolve_downscale_buffer_ != VK_NULL_HANDLE ||
            resolve_downscale_buffer_memory_ != VK_NULL_HANDLE) {
@@ -2612,7 +3066,7 @@ index 001f36b..8f35864 100644
            dfn.vkDestroyBuffer(device, new_buffer, nullptr);
            dfn.vkFreeMemory(device, new_memory, nullptr);
            return true;
-@@ -4561,8 +4601,8 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -4561,8 +4610,8 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
  
      VkDescriptorBufferInfo buffer_infos[2] = {};
      buffer_infos[0].buffer = scaled_resolve_buffer;
@@ -2623,7 +3077,7 @@ index 001f36b..8f35864 100644
      buffer_infos[1].buffer = resolve_downscale_buffer_;
      buffer_infos[1].offset = 0;
      buffer_infos[1].range = written_length;
-@@ -4601,7 +4641,7 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -4601,7 +4650,7 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
      constants.scale_y = texture_cache_->draw_resolution_scale_y();
      constants.pixel_size_log2 = pixel_size_log2;
      constants.tile_count = tile_count;
@@ -2632,7 +3086,7 @@ index 001f36b..8f35864 100644
      constants.half_pixel_offset = (REXCVAR_GET(readback_resolve_half_pixel_offset) &&
                                     (constants.scale_x > 1 || constants.scale_y > 1))
                                        ? 1u
-@@ -4649,12 +4689,16 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+@@ -4649,27 +4698,67 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
                            VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
                            VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_HOST_READ_BIT);
  
@@ -2650,7 +3104,10 @@ index 001f36b..8f35864 100644
      return true;
    }
  
-@@ -4664,11 +4708,38 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+   bool is_cache_miss = false;
+-  if (use_delayed_sync && (readback.buffers[read_index] == VK_NULL_HANDLE ||
++  if (use_delayed_sync && (some_decision.sync || readback.buffers[read_index] == VK_NULL_HANDLE ||
+                            written_length > readback.sizes[read_index] ||
                             readback.mapped_data[read_index] == nullptr)) {
      is_cache_miss = true;
      read_index = write_index;
@@ -2660,6 +3117,7 @@ index 001f36b..8f35864 100644
      }
    }
  
+-  bool should_copy = (readback_mode == ReadbackResolveMode::kSome) ? is_cache_miss : true;
 +  if (measure_resolve_wait && (!use_delayed_sync || is_cache_miss)) {
 +    struct ResolveWaitRange {
 +      double milliseconds = 0;
@@ -2687,10 +3145,20 @@ index 001f36b..8f35864 100644
 +    }
 +  }
 +
-   bool should_copy = (readback_mode == ReadbackResolveMode::kSome) ? is_cache_miss : true;
++  bool should_copy = (readback_mode == ReadbackResolveMode::kSome)
++                         ? (is_cache_miss || some_decision.refresh)
++                         : true;
++  if (readback_mode == ReadbackResolveMode::kSome) {
++    if (should_copy) {
++      NoteSomeRangeRefreshed(resolve_key);
++    } else {
++      NoteSomeRangeSkipped(resolve_key);
++    }
++  }
    if (should_copy && readback.buffers[read_index] != VK_NULL_HANDLE &&
        written_length <= readback.sizes[read_index] && readback.mapped_data[read_index] != nullptr) {
-@@ -4682,6 +4753,28 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
+     VkMappedMemoryRange readback_memory_range = {};
+@@ -4682,6 +4771,28 @@ bool VulkanCommandProcessor::IssueCopy_ReadbackResolvePath() {
      uint8_t* destination = memory_->TranslatePhysical(written_address);
      if (destination) {
        std::memcpy(destination, readback.mapped_data[read_index], written_length);
@@ -2719,7 +3187,7 @@ index 001f36b..8f35864 100644
      }
    }
  
-@@ -4886,7 +4979,7 @@ bool VulkanCommandProcessor::EndGuestOcclusionQuery(uint32_t sample_count_addres
+@@ -4886,7 +4997,7 @@ bool VulkanCommandProcessor::EndGuestOcclusionQuery(uint32_t sample_count_addres
    if (!EndSubmission(false)) {
      return false;
    }
@@ -2728,7 +3196,7 @@ index 001f36b..8f35864 100644
      return false;
    }
  
-@@ -4943,7 +5036,8 @@ void VulkanCommandProcessor::WriteGuestOcclusionResult(uint32_t sample_count_add
+@@ -4943,7 +5054,8 @@ void VulkanCommandProcessor::WriteGuestOcclusionResult(uint32_t sample_count_add
    sample_counts->StencilFail_B = 0;
  }
  
@@ -2738,7 +3206,7 @@ index 001f36b..8f35864 100644
    // Only report once, no need to retry a wait that won't succeed anyway.
    if (device_lost_) {
      return;
-@@ -4951,7 +5045,12 @@ void VulkanCommandProcessor::CheckSubmissionFenceAndDeviceLoss(uint64_t await_su
+@@ -4951,7 +5063,12 @@ void VulkanCommandProcessor::CheckSubmissionFenceAndDeviceLoss(uint64_t await_su
  
    if (await_submission >= GetCurrentSubmission()) {
      if (submission_open_) {
@@ -2751,7 +3219,7 @@ index 001f36b..8f35864 100644
      }
      // A submission won't be ended if it hasn't been started, or if ending
      // has failed - clamp the index.
-@@ -4965,14 +5064,40 @@ void VulkanCommandProcessor::CheckSubmissionFenceAndDeviceLoss(uint64_t await_su
+@@ -4965,14 +5082,40 @@ void VulkanCommandProcessor::CheckSubmissionFenceAndDeviceLoss(uint64_t await_su
    size_t fences_total = submissions_in_flight_fences_.size();
    size_t fences_awaited = 0;
    if (await_submission > submission_completed_) {
@@ -2800,7 +3268,7 @@ index 001f36b..8f35864 100644
      if (wait_result == VK_SUCCESS) {
        fences_awaited += await_submission - submission_completed_;
      } else {
-@@ -5032,11 +5157,35 @@ void VulkanCommandProcessor::CheckSubmissionFenceAndDeviceLoss(uint64_t await_su
+@@ -5032,11 +5175,35 @@ void VulkanCommandProcessor::CheckSubmissionFenceAndDeviceLoss(uint64_t await_su
      if (command_buffer_pair.first > submission_completed_) {
        break;
      }
@@ -2836,7 +3304,7 @@ index 001f36b..8f35864 100644
  
    primitive_processor_->CompletedSubmissionUpdated();
  
-@@ -5111,7 +5260,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
+@@ -5111,7 +5278,7 @@ bool VulkanCommandProcessor::BeginSubmission(bool is_guest_command) {
    // is still available, and whether the await was successful.
    uint64_t await_submission =
        is_opening_frame ? closed_frame_submissions_[frame_current_ % kMaxFramesInFlight] : 0;
@@ -2845,7 +3313,7 @@ index 001f36b..8f35864 100644
    if (device_lost_ || submission_completed_ < await_submission) {
      return false;
    }
-@@ -5284,6 +5433,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+@@ -5284,6 +5451,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
        if (dfn.vkAllocateCommandBuffers(device, &command_buffer_allocate_info,
                                         &command_buffer.buffer) != VK_SUCCESS) {
          REXGPU_ERROR("Failed to allocate a Vulkan command buffer");
@@ -2855,7 +3323,7 @@ index 001f36b..8f35864 100644
          dfn.vkDestroyCommandPool(device, command_buffer.pool, nullptr);
          return false;
        }
-@@ -5372,6 +5524,32 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+@@ -5372,6 +5542,32 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
  
      assert_false(command_buffers_writable_.empty());
      CommandBuffer command_buffer = command_buffers_writable_.back();
@@ -2888,7 +3356,7 @@ index 001f36b..8f35864 100644
      if (dfn.vkResetCommandPool(device, command_buffer.pool, 0) != VK_SUCCESS) {
        REXGPU_ERROR("Failed to reset a Vulkan command pool");
        return false;
-@@ -5385,7 +5563,14 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+@@ -5385,7 +5581,14 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
        REXGPU_ERROR("Failed to begin a Vulkan command buffer");
        return false;
      }
@@ -2903,7 +3371,7 @@ index 001f36b..8f35864 100644
      if (dfn.vkEndCommandBuffer(command_buffer.buffer) != VK_SUCCESS) {
        REXGPU_ERROR("Failed to end a Vulkan command buffer");
        return false;
-@@ -5452,7 +5637,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+@@ -5452,7 +5655,7 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
      // Submission already closed now, so minus 1.
      closed_frame_submissions_[(frame_current_++) % kMaxFramesInFlight] = GetCurrentSubmission() - 1;
  
@@ -2912,7 +3380,7 @@ index 001f36b..8f35864 100644
        cache_clear_requested_ = false;
  
        DestroyScratchBuffer();
-@@ -5464,6 +5649,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
+@@ -5464,6 +5667,9 @@ bool VulkanCommandProcessor::EndSubmission(bool is_swap) {
  
        assert_true(command_buffers_submitted_.empty());
        for (const CommandBuffer& command_buffer : command_buffers_writable_) {

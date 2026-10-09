@@ -16,7 +16,7 @@ ReStreet - FIFA Street (2012) for Windows PC, recompiled with ReXGlue, with an i
 
 Commit this source folder and its documentation. Upload the installer `.exe` as a Release asset rather than committing it to the source tree. GitHub Releases are designed to contain downloadable binaries and release notes; see [GitHub's documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases).
 
-The release asset is `FifaStreetSetup.exe` (v1.0). Its SHA-256 is in `FifaStreetSetup.exe.sha256` and in the release text. Use `docs/RELEASE-NOTES.md` as the release description. Keep the requirements marked as estimates until more hardware reports arrive, and keep the legal note about the generated game binaries.
+The release asset is `FifaStreetSetup.exe` (v1.1). Its SHA-256 is in `FifaStreetSetup.exe.sha256` and in the release text. Use `docs/RELEASE-NOTES.md` as the release description. Keep the requirements marked as estimates until more hardware reports arrive, and keep the legal note about the generated game binaries.
 
 ## Images
 

@@ -61,11 +61,9 @@ internal static class StreetTheme
 
     public const int DesignWidth = 930;
 
-    // Extra scale applied by a window that shrinks itself to fit a small screen (1.0 = none).
-    public static float FitScale = 1f;
-
-    // Pixel size of one design pixel for a control: system DPI (96 = 1.0) times the fit scale.
-    public static float K(Control control) => (control.DeviceDpi / 96f) * FitScale;
+    // Pixel size of one design pixel for a control: the scale its window (UiScaler) is using right now.
+    public static float K(Control control) =>
+        control.FindForm() is IUiScaled scaled ? scaled.UiScale : control.DeviceDpi / 96f;
 
     static string? condensed;
 
@@ -642,5 +640,135 @@ internal sealed class GlassCombo : ComboBox
         float cx = Width - 20 * k, cy = Height / 2f;
         using var chevron = new Pen(Enabled ? StreetTheme.Muted : Color.FromArgb(90, StreetTheme.Muted), 1.6f * k) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
         g.DrawLines(chevron, new[] { new PointF(cx - 4.5f * k, cy - 2.2f * k), new PointF(cx, cy + 2.3f * k), new PointF(cx + 4.5f * k, cy - 2.2f * k) });
+    }
+}
+
+
+// A window that is laid out from design pixels and scaled by one number.
+internal interface IUiScaled { float UiScale { get; } }
+
+// One scale factor drives everything: window size, control bounds and fonts. It is the smaller of the monitor's
+// DPI scale and what fits in the screen's work area, so the layout never depends on WinForms' automatic scaling
+// and can never end up with the window and its controls at different scales. Controls and fonts are captured once
+// (in design pixels) and re-applied from that baseline every time the scale changes.
+internal sealed class UiScaler
+{
+    readonly Form form;
+    readonly int designWidth;
+    int designHeight;
+    readonly List<Item> items = new();
+    float formFontPx = 13.33f;
+    bool applying, captured;
+
+    sealed class Item
+    {
+        public Control Control = null!;
+        public Rectangle Bounds;
+        public float FontPx;
+        public int ItemHeight;
+        public bool KeepBounds;
+    }
+
+    public float Scale { get; private set; } = 1f;
+
+    // Testing and support overrides: RESTREET_UI_DPI=150 (percent) and RESTREET_UI_AREA=1280x680 (work area).
+    static float? DpiOverride => float.TryParse(Environment.GetEnvironmentVariable("RESTREET_UI_DPI"), out float percent) && percent >= 50 ? percent / 100f : null;
+    static Size? AreaOverride
+    {
+        get
+        {
+            var parts = (Environment.GetEnvironmentVariable("RESTREET_UI_AREA") ?? "").Split('x');
+            return parts.Length == 2 && int.TryParse(parts[0], out int w) && int.TryParse(parts[1], out int h) && w > 200 && h > 200 ? new Size(w, h) : null;
+        }
+    }
+
+    public UiScaler(Form form, int designWidth, int designHeight)
+    {
+        this.form = form;
+        this.designWidth = designWidth;
+        this.designHeight = designHeight;
+        form.AutoScaleMode = AutoScaleMode.None;
+        form.DpiChanged += (_, _) => Apply();
+        form.ResizeEnd += (_, _) => Apply();
+        form.Shown += (_, _) => Apply();
+    }
+
+    // Design height of the client area. Changing it resizes the window at the current scale (or a smaller one if it no longer fits).
+    public int DesignHeight
+    {
+        get => designHeight;
+        set { if (value == designHeight) return; designHeight = value; Apply(); }
+    }
+
+    // Records every control's bounds and font as design pixels. Call once, after the whole interface is built.
+    public void Capture()
+    {
+        items.Clear();
+        formFontPx = form.Font.SizeInPoints * 96f / 72f;
+        Walk(form, false);
+        captured = true;
+        Apply();
+    }
+
+    void Walk(Control parent, bool selfLayout)
+    {
+        foreach (Control child in parent.Controls)
+        {
+            items.Add(new Item
+            {
+                Control = child,
+                Bounds = child.Bounds,
+                FontPx = child.Font.SizeInPoints * 96f / 72f,
+                ItemHeight = child is ComboBox combo ? combo.ItemHeight : 0,
+                KeepBounds = selfLayout
+            });
+            // A FieldFrame lays out its own text box, so only the font of that box is scaled.
+            Walk(child, child is FieldFrame);
+        }
+    }
+
+    public void Apply()
+    {
+        if (applying || !captured) return;
+        applying = true;
+        try
+        {
+            var area = AreaOverride is { } forced ? new Rectangle(0, 0, forced.Width, forced.Height)
+                : (form.IsHandleCreated ? Screen.FromControl(form) : Screen.PrimaryScreen ?? Screen.AllScreens[0]).WorkingArea;
+            float dpiScale = DpiOverride ?? form.DeviceDpi / 96f;
+            var chrome = form.IsHandleCreated ? new Size(form.Width - form.ClientSize.Width, form.Height - form.ClientSize.Height)
+                : new Size(16, 39);
+            float fitWidth = (area.Width - chrome.Width) / (float)designWidth;
+            float fitHeight = (area.Height - chrome.Height) / (float)designHeight;
+            float k = Math.Max(0.5f, Math.Min(dpiScale, Math.Min(fitWidth, fitHeight)));
+            k = (float)Math.Floor(k * 1000) / 1000f;
+            Scale = k;
+
+            form.SuspendLayout();
+            form.MinimumSize = form.MaximumSize = Size.Empty;
+            form.Font = new Font(form.Font.FontFamily, Math.Max(7f, formFontPx * k), form.Font.Style, GraphicsUnit.Pixel);
+            form.ClientSize = new Size((int)Math.Round(designWidth * k), (int)Math.Round(designHeight * k));
+            foreach (var item in items)
+            {
+                var c = item.Control;
+                c.Font = new Font(c.Font.FontFamily, Math.Max(7f, item.FontPx * k), c.Font.Style, GraphicsUnit.Pixel);
+                if (c is ComboBox combo && item.ItemHeight > 0) combo.ItemHeight = Math.Max(16, (int)Math.Round(item.ItemHeight * k));
+                if (item.KeepBounds) continue;
+                c.SetBounds((int)Math.Round(item.Bounds.X * k), (int)Math.Round(item.Bounds.Y * k),
+                    (int)Math.Round(item.Bounds.Width * k), (int)Math.Round(item.Bounds.Height * k));
+            }
+            form.ResumeLayout(true);
+            form.MinimumSize = form.MaximumSize = form.Size;
+
+            if (form.Visible)
+            {
+                var bounds = form.Bounds;
+                int x = Math.Max(area.Left, Math.Min(bounds.X, area.Right - bounds.Width));
+                int y = Math.Max(area.Top, Math.Min(bounds.Y, area.Bottom - bounds.Height));
+                if (x != bounds.X || y != bounds.Y) form.Location = new Point(x, y);
+            }
+            form.Invalidate(true);
+        }
+        finally { applying = false; }
     }
 }

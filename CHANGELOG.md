@@ -1,5 +1,19 @@
 ﻿# ReStreet - FIFA Street 2012 Recompiled: changelog
 
+## v1.1
+
+Smoother graphics and VSync, direct play, and a setup and launcher that fit any screen.
+
+### New
+- **New logo: ReStreet.** The main menu and the Press Start screen now show the ReStreet logo. It is applied by a small patch in the new `Mods` folder next to `Game` and `GameData`, which the game applies while reading its files; your game files are not modified. Delete the file in `Mods` to get the original logo back.
+- **Improved "Some" graphics readback, now the default.** The Some readback mode was reworked to remove the graphical garbage it used to cause on some courts (for example floor reflections and flickering floor lines) while keeping its performance. It is now the default in the Balanced and Quality profiles. Occlusion queries are off by default in those profiles. If you prefer the old behaviour, pick Full (compatible) in the Compatibility tab. Settings you already saved are kept.
+- **VSync now works smoothly.** The old VSync made the game run at only a few FPS on some PCs (every wait for the graphics card cost two screen refreshes). VSync now keeps the game locked to your refresh rate and shows each frame without blocking the graphics queue, with no tearing. Turning VSync off still gives an unlocked frame rate.
+- **Direct play.** Start the game without opening the launcher window: run `FifaStreetLauncher.exe --play`, or click the new **Shortcut** button in the launcher to create a desktop shortcut that does exactly that. It uses the settings you last chose in the launcher and closes by itself after the game exits.
+
+### Fixed
+- **Setup and launcher layout on any resolution or Windows scale.** On some screens (for example a 4K TV set to 1080p with Windows scale at 150%) the controls could end up smaller than the window, overlapping the title and cut off. The window, controls and text are now laid out from one scale that follows your monitor's DPI and always fits the screen, including 100% to 200% scale and small laptop screens.
+- The window now follows you when it is moved to a monitor with a different scale.
+
 ## v1.0
 
 First stable release. This version is offline only: it has no online play.

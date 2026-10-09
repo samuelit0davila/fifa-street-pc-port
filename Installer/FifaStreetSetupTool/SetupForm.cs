@@ -71,8 +71,11 @@ internal static class Program
     }
 }
 
-internal sealed class SetupForm : Form, ISceneHost
+internal sealed class SetupForm : Form, ISceneHost, IUiScaled
 {
+    readonly UiScaler scaler;
+    public float UiScale => scaler.Scale;
+
     readonly TextBox iso = new();
     readonly TextBox destination = new();
     readonly TextBox details = new();
@@ -120,7 +123,7 @@ internal sealed class SetupForm : Form, ISceneHost
         using (var icon = Assembly.GetExecutingAssembly().GetManifestResourceStream("fifastreet.ico")!)
             Icon = new Icon(icon);
         ClientSize = new Size(930, 610);
-        MinimumSize = MaximumSize = Size;
+        scaler = new UiScaler(this, 930, 610);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
@@ -129,8 +132,6 @@ internal sealed class SetupForm : Form, ISceneHost
         BackColor = StreetTheme.Asphalt;
         ForeColor = StreetTheme.Ink;
         Font = StreetTheme.Body(10);
-        AutoScaleDimensions = new SizeF(96F, 96F);
-        AutoScaleMode = AutoScaleMode.Dpi;
         HandleCreated += (_, _) => StreetTheme.ApplyDarkTitleBar(Handle);
 
         Controls.Add(Text_(PrecompiledPackage.Enabled
@@ -187,9 +188,7 @@ internal sealed class SetupForm : Form, ISceneHost
         {
             details.Visible = !details.Visible;
             showDetails.Text = details.Visible ? "Hide details" : "Show details";
-            MaximumSize = Size.Empty;
-            Height += (int)((details.Visible ? 180 : -180) * DeviceDpi / 96f);
-            MaximumSize = Size;
+            scaler.DesignHeight = details.Visible ? 790 : 610;
         };
         Controls.Add(showDetails);
         cancel.Kind = SlantKind.Text;
@@ -234,6 +233,7 @@ internal sealed class SetupForm : Form, ISceneHost
         };
         FormClosed += (_, _) => { timer.Dispose(); scene?.Dispose(); };
         RefreshInstallMode();
+        scaler.Capture();
     }
 
     protected override void OnPaintBackground(PaintEventArgs e)
@@ -337,8 +337,7 @@ internal sealed class SetupForm : Form, ISceneHost
             case "details":
                 details.Text = "Preparing installation tools…\r\nChecking the ISO…\r\nExtracting the FIFA Street ISO…";
                 details.Visible = true;
-                MaximumSize = Size.Empty;
-                Height += (int)(180 * DeviceDpi / 96f);
+                scaler.DesignHeight = 790;
                 break;
         }
         Application.DoEvents();

@@ -1,40 +1,41 @@
 # Validation and known limitations
 
-Last updated: **8 October 2026**, for **ReStreet v1.0** (offline only). This page separates what was tested from what was not.
+Last updated: **9 October 2026**, for **ReStreet v1.1** (offline only). This page separates what was tested from what was not.
 
-## What was tested for v1.0
+## What was tested for v1.1
 
 All of this was tested by the developer on one Windows 11 PC with an AMD Radeon RX 9070 XT, at 100% display scale unless stated.
 
 | Check | Result |
 |---|---|
-| Clean installation from the original ISO with the final installer | Passed |
-| Update over an existing installation that has a save | Passed, save kept |
-| Direct3D 12: gameplay | Passed |
-| Vulkan: gameplay | Passed |
-| Windows display scale 125% and 150% (launcher and installer) | Passed |
-| Exit shortcut (START + B) and FPS counter (Home) | Passed |
-| Small screens: launcher shrinks to fit a reduced work area | Checked in a simulated 700 px high work area |
+| ReStreet logos on the main menu and the Press Start screen (final installer, default `Mods` folder) | Passed |
+| Direct play (`--play` and the desktop shortcut) | Passed |
+| Direct3D 12: VSync (paced mode) | Passed |
+| Vulkan: gameplay with the new "Some" readback | Passed |
 
-The game binaries (main module, game module and World Tour module) are the same as in v0.4.1. World Tour, Practice, Direct3D 12 and Vulkan were validated on earlier releases; this release changes the launcher, installer, overlays and performance options.
+Tested on v1.0 and not repeated for v1.1: clean installation from the original ISO, update over an existing installation with a save, Windows display scale 125% and 150%, the exit shortcut and the FPS counter.
+
+**Not yet tested on v1.1:** a clean installation from the ISO with the v1.1 installer, an update of a v1.0 installation with a save using the v1.1 installer, Vulkan with VSync on.
+
+The game binaries (main module, game module and World Tour module) are the same as in v0.4.1. World Tour, Practice, Direct3D 12 and Vulkan were validated on earlier releases; this release changes the graphics readback, VSync, the launcher, the installer and the logo patch.
 
 ## Graphics backends
 
 The package contains two validated backend folders, `Game/Backends/D3D12` and `Game/Backends/Vulkan`. The launcher copies the selected backend's `rexruntime.dll` and `rexgpu-xenos.dll` beside `fifastreet.exe` before launch. Direct3D 12 is the default.
 
-### SHA-256 of the backend files in v1.0
+### SHA-256 of the backend files in v1.1
 
 | Backend | `rexruntime.dll` | `rexgpu-xenos.dll` |
 |---|---|---|
-| Direct3D 12 | `941DA42DFBA505F7F011ED81A6C7F6FD31EA2B3ED717810EF8C3E6EF89B56030` | `CC583314A05B11E49910CE0600E69EDD8B51B4C84D63641B7088916BB95551A2` |
-| Vulkan | `E4DD721D6D080705B8685E14F8437583CCE7DE2A35298BEAE04B4A91372E5E0F` | `B53E030B6C41EC017F97D53F657C9B8850BB5BEDFE2A0A034EE4871F182DC688` |
+| Direct3D 12 | `809AFAD3E2DBDCD68C88B39365FF54EECBEF4E1DE4698A936C2F2D1CC368F4E0` | `9DDB0DD0BB4916A16AB4B757261CDF37E0B0EAB16F40DC9EA76233510E453E7C` |
+| Vulkan | `F3FC94EF7EF154A737C7143FA96874C2225FA84D8577DD9428105524E0B5954E` | `BA05650F760A0C768C60C531854A925CB9E600A8C8E7425B160B6C95FF59251B` |
 
 The installer checks its payload against the hashes in its own manifest before installing.
 
 ## Performance options
 
 - **Profiles:** Balanced (the launcher defaults), Quality (2x internal resolution, FXAA Extreme, MSAA), Performance (native resolution, no post-processing, Fast readback, occlusion queries off) and Custom. They only set options the launcher already has.
-- **Readback Resolve:** Full is the validated mode and the default. The Performance profile uses Fast, which gives more FPS under heavy GPU load but has not been validated on other hardware. Some can cause visible graphical corruption and is not used by any profile.
+- **Readback Resolve:** Some is the default in the Balanced and Quality profiles since v1.1: it was reworked to avoid the graphical garbage it used to cause, and it was tested on one GPU only. Full (compatible) is the old default. The Performance profile uses Fast, which gives more FPS under heavy GPU load but has not been validated on other hardware.
 - **Shader cache:** a small set of pre-built shaders ships in `Game/shader-seed` and is copied into the player's cache on the first run. It never replaces files the player already has.
 
 ## Resolution model
@@ -53,7 +54,7 @@ Output resolution and internal rendering scale are independent. Internal resolut
 ## Known limitations
 
 - No universal hardware, driver or frame-rate guarantee. 3x/4x internal rendering and 4K output are not guaranteed 60 FPS modes.
-- No online play in v1.0.
+- No online play in v1.1.
 - The window title of the game itself still reads "FIFA Street PC"; the launcher and installer use the ReStreet name.
 - The exit prompt only opens with the START + B (START + Circle) shortcut, not from the main menu.
 - The installer expands its details panel by 180 px, which does not fit on screens 768 px high or less.

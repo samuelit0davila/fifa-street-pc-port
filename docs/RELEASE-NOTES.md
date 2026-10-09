@@ -1,15 +1,18 @@
-# ReStreet - FIFA Street 2012 Recompiled v1.0
+# ReStreet - FIFA Street 2012 Recompiled v1.1
 
-First stable release of ReStreet, FIFA Street (2012) for Windows PC. This version is offline only.
+Smoother graphics and VSync, direct play, the ReStreet logo, and a setup and launcher that fit any screen. This version is offline only.
 
-## New in v1.0
+## New in v1.1
 
-- **Performance profiles** in the launcher: Balanced (default), Quality for strong PCs, Performance for weaker PCs, and Custom. Changing any option by hand switches the profile to Custom.
-- **Shader cache included.** Pre-built shaders ship with the game and are copied on the first run, so the first matches have fewer slow moments. Shaders you already have are never replaced.
-- **FPS counter.** Press Home to show or hide a small FPS number in the top-left corner. It scales with the game's resolution and changes colour: green from 55 FPS, yellow from 30, red below.
-- **Exit shortcut.** Hold START and press B (Xbox layout) or START and Circle (PlayStation layout) on any screen to open "EXIT THE GAME?". A confirms, B cancels. Available in English, German, French, Spanish, Italian and Portuguese.
-- **New launcher and installer design,** with support for the Windows display scale and small screens.
-- **New name:** ReStreet - FIFA Street 2012 Recompiled.
+- **ReStreet logo.** The main menu and the Press Start screen now show the ReStreet logo. It is applied by a small patch in the new `Mods` folder next to `Game` and `GameData`, which the game applies while reading its files. Your game files are not modified: delete the files in `Mods` to get the original logo back.
+- **Improved "Some" graphics readback, now the default.** The Some mode was reworked to remove the graphical garbage it used to cause on some courts (floor reflections, flickering floor lines) while keeping its speed. It is the default in the Balanced and Quality profiles, and occlusion queries are off by default there. Pick "Full (compatible)" in the Compatibility tab if you prefer the old behaviour. Settings you already saved are kept.
+- **VSync works smoothly.** The old VSync made the game run at only a few FPS on some PCs. VSync now keeps the game locked to your refresh rate with no tearing. Turning VSync off still gives an unlocked frame rate.
+- **Direct play.** Start the game without opening the launcher window: run `FifaStreetLauncher.exe --play`, or click the new **Shortcut** button in the launcher to create a desktop shortcut that does exactly that. It uses the settings you last chose in the launcher and closes by itself after the game exits.
+
+## Fixed
+
+- Setup and launcher layout on any resolution or Windows scale. On some screens (for example a 4K TV set to 1080p with Windows scale at 150%) the controls could be smaller than the window, overlap the title and be cut off.
+- The window follows you when it is moved to a monitor with a different scale.
 
 ## Unchanged
 
@@ -31,4 +34,5 @@ Windows 10 or 11 (64-bit), a CPU with SSSE3, a Direct3D 12 or Vulkan GPU (about 
 
 - Performance depends on your hardware and drivers; the profiles are starting points, not guarantees.
 - The installer includes generated game binaries. The project's MIT licence does not establish the right to redistribute them, and no legal clearance is claimed.
+- The Mods logo patch is derived from the game's own art.
 - This is an unofficial community project, with no affiliation to EA, Microsoft or Xbox.
