@@ -23,4 +23,5 @@ build-installer:
     name: FifaStreet-Setup
     expire_in: 30 days
     paths:
+      - dist/FifaStreet-Setup.exe
       - dist/FifaStreet-Setup.exe.sha256

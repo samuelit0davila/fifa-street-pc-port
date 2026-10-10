@@ -17,8 +17,8 @@ foreach ($file in @('CMakeLists.txt', 'CMakePresets.json', 'fifastreet_manifest.
 foreach ($folder in @('config', 'src')) {
     New-Item -ItemType Directory -Path (Join-Path $template $folder) | Out-Null
 }
-foreach ($toml in @('fifadllzf_overrides.toml', 'footballcompeng_overrides.toml')) {
-    Copy-Item -LiteralPath (Join-Path $root "recomp-template\config\$toml") -Destination (Join-Path $template 'config')
+foreach ($configFile in @('fifadllzf_overrides.toml', 'footballcompeng_overrides.toml', 'verify_allocation_region.py', 'verify_ctr_region.py', 'verify_direct_branches.py')) {
+    Copy-Item -LiteralPath (Join-Path $root "recomp-template\config\$configFile") -Destination (Join-Path $template 'config')
 }
 foreach ($file in @('main.cpp', 'fifastreet_app.h', 'stubs.cpp')) {
     Copy-Item -LiteralPath (Join-Path $root "recomp-template\src\$file") -Destination (Join-Path $template 'src')

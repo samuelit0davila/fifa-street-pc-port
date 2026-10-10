@@ -1,5 +1,6 @@
 {
   "version": "v0.4.0-candidate",
+  "_note": "Local/release builds use this candidate manifest. CI validation uses ci/backend-manifest.json (v0.3.0 stable).",
   "backends": {
     "D3D12": {
       "source": "out/win-amd64/Release",
