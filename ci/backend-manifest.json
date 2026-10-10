@@ -1,5 +1,6 @@
 {
   "version": "v0.3.0",
+  "_note": "CI validation uses this stable manifest. Local/release builds use Installer/backend-manifest.json (v0.4.0-candidate).",
   "backends": {
     "D3D12": {
       "source": "out/win-amd64/Release",

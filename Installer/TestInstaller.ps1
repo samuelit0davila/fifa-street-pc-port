@@ -31,7 +31,7 @@ $logPath = Join-Path $env:TEMP ('FifaStreetWrapperTest_' + [guid]::NewGuid().ToS
 Invoke-BuildTool 'cmd.exe' @('/c', 'echo Test diagnostic 1>&2 & exit /b 0')
 $failedAsExpected = $false
 try { Invoke-BuildTool 'cmd.exe' @('/c', 'exit /b 7') }
-catch { $failedAsExpected = $_.Exception.Message -match 'codigo 7' }
+catch { $failedAsExpected = $_.Exception.Message -match 'code 7' }
 if (!$failedAsExpected) { throw 'Nonzero tool exit code was not preserved' }
 if ([IO.File]::ReadAllText($logPath + '.native') -notmatch 'Test diagnostic') { throw 'Native stderr was not logged' }
 Remove-Item -LiteralPath ($logPath + '.native') -Force
