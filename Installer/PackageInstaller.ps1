@@ -6,7 +6,7 @@ if (Test-Path -LiteralPath $Destination) { throw 'Escolha uma pasta de destino n
 New-Item -ItemType Directory -Path $Destination | Out-Null
 
 # Only authoring files and public tools belong in the installer package.
-foreach ($file in @('BuildFifaStreet.ps1', 'README.md')) {
+foreach ($file in @('BuildFifaStreet.ps1', 'BuildIntegrity.ps1', 'README.md')) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $Destination
 }
 $template = Join-Path $Destination 'recomp-template'
@@ -17,7 +17,9 @@ foreach ($file in @('CMakeLists.txt', 'CMakePresets.json', 'fifastreet_manifest.
 foreach ($folder in @('config', 'src')) {
     New-Item -ItemType Directory -Path (Join-Path $template $folder) | Out-Null
 }
-Copy-Item -LiteralPath (Join-Path $root 'recomp-template\config\fifadllzf_overrides.toml') -Destination (Join-Path $template 'config')
+foreach ($toml in @('fifadllzf_overrides.toml', 'footballcompeng_overrides.toml')) {
+    Copy-Item -LiteralPath (Join-Path $root "recomp-template\config\$toml") -Destination (Join-Path $template 'config')
+}
 foreach ($file in @('main.cpp', 'fifastreet_app.h', 'stubs.cpp')) {
     Copy-Item -LiteralPath (Join-Path $root "recomp-template\src\$file") -Destination (Join-Path $template 'src')
 }
