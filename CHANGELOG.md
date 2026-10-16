@@ -1,5 +1,10 @@
 ﻿# ReStreet - FIFA Street 2012 Recompiled: changelog
 
+## Unreleased
+
+### New
+- **Discord Rich Presence.** While the game runs, Discord shows "Playing ReStreet" with the graphics API and the time played. Turn it off in the launcher under **Advanced**. Nothing changes if Discord is not running.
+
 ## v1.3
 
 True VSync on Direct3D 12 and Vulkan: no tearing, a new frame on every refresh at any refresh rate (also with Adaptive Sync / FreeSync), an FPS counter that matches GPU overlays, and clean stadium floors on every graphics card.

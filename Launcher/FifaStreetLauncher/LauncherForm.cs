@@ -58,6 +58,7 @@ public class LauncherForm : Form, ISceneHost, IUiScaled
     private readonly GlassToggle occlusionQueryBox = new();
     private readonly GlassToggle asyncShadersBox = new();
     private readonly GlassToggle logFrameStatsBox = new();
+    private readonly GlassToggle discordPresenceBox = new();
 
     private readonly TextBox gamePathBox = new();
     private readonly TextBox exePathBox = new();
@@ -73,6 +74,7 @@ public class LauncherForm : Form, ISceneHost, IUiScaled
 
     private bool gameRunning;
     private bool closeAfterGame;
+    private DiscordPresence? presence;
     private string? changedDisplay;
     private DEVMODE previousDisplayMode;
     private bool advancedVisible;
@@ -280,7 +282,7 @@ public class LauncherForm : Form, ISceneHost, IUiScaled
 
     private void ConfigureAdvancedPanel()
     {
-        advancedPanel.Bounds = new Rectangle(PanelX, PanelY, PanelW, 192);
+        advancedPanel.Bounds = new Rectangle(PanelX, PanelY, PanelW, 240);
         advancedPanel.FillColor = StreetTheme.PanelFlat;
         advancedPanel.BorderColor = Color.FromArgb(70, 72, 76);
         advancedPanel.Radius = 16;
@@ -298,6 +300,9 @@ public class LauncherForm : Form, ISceneHost, IUiScaled
         }
         PathRow("Game executable", exePathBox, Pad, BrowseExe);
         PathRow("Game data folder", gamePathBox, Pad + 80, BrowseGame);
+
+        ConfigureCheck(discordPresenceBox, "Discord Rich Presence", Pad, 184);
+        advancedPanel.Controls.Add(discordPresenceBox);
     }
 
     private void ConfigureCompatibilityPanel()
@@ -410,7 +415,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
 
         if (advancedVisible)
         {
-            scaler.DesignHeight = 944;
+            scaler.DesignHeight = 992;
         }
         else
         {
@@ -602,6 +607,7 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         readbackMemexportFastBox.Checked = true;
         clearMemoryPageStateBox.Checked = false;
         logFrameStatsBox.Checked = false;
+        discordPresenceBox.Checked = true;
         occlusionQueryBox.Checked = false;
         asyncShadersBox.Checked = true;
 
@@ -1236,6 +1242,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
             ApplyMonitorRefresh(monitor, refresh, fullscreen ? width : 0, fullscreen ? height : 0);
             using var process = Process.Start(startInfo);
             gameRunning = process != null;
+            if (process != null && discordPresenceBox.Checked)
+                presence = DiscordPresence.Start(graphicsApi == "Vulkan" ? "Vulkan" : "Direct3D 12");
 
             UpdateStatus(
                 process != null
@@ -1260,6 +1268,8 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
             );
         }
         finally {
+            presence?.Dispose();
+            presence = null;
             RestoreMonitorRefresh();
             gameRunning = false;
             if (closeAfterGame) Close();
@@ -1483,6 +1493,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 InternalResolutionScale = internalResolutionBox.SelectedIndex,
                 ReadbackResolve = readbackResolveBox.SelectedIndex,
                 LogFrameStats = logFrameStatsBox.Checked,
+                DiscordPresence = discordPresenceBox.Checked,
                 ReadbackMemexport = readbackMemexportBox.Checked,
                 ReadbackMemexportFast = readbackMemexportFastBox.Checked,
                 ClearMemoryPageState = clearMemoryPageStateBox.Checked,
@@ -1576,6 +1587,7 @@ if (settings.InternalResolutionScale >= 0 &&
                 settings.ReadbackResolve < readbackResolveBox.Items.Count)
                 readbackResolveBox.SelectedIndex = settings.ReadbackResolve;
             logFrameStatsBox.Checked = settings.LogFrameStats;
+            discordPresenceBox.Checked = settings.DiscordPresence;
             readbackMemexportBox.Checked = settings.ReadbackMemexport;
             readbackMemexportFastBox.Checked = settings.ReadbackMemexportFast;
             clearMemoryPageStateBox.Checked = settings.ClearMemoryPageState;
@@ -1662,6 +1674,7 @@ public class LauncherSettings
     public int PostEffect { get; set; } = 1;
     public int ReadbackResolve { get; set; } = 0;
     public bool LogFrameStats { get; set; } = false;
+    public bool DiscordPresence { get; set; } = true;
     public int InternalResolutionScale { get; set; } = 0;
     public bool ReadbackMemexport { get; set; } = true;
     public bool ReadbackMemexportFast { get; set; } = true;
