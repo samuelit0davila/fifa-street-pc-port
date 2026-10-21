@@ -1,0 +1,41 @@
+name: Build Linux launcher
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "Launcher/FifaStreetLauncher.Linux/**"
+      - "Launcher/FifaStreetLauncher/ui/**"
+      - ".github/workflows/linux-launcher.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish
+        run: |
+          dotnet publish Launcher/FifaStreetLauncher.Linux/FifaStreetLauncher.Linux.csproj -c Release --self-contained -o dist/Linux
+          rm -f dist/Linux/*.pdb
+          tar -C dist -czf ReStreet-Linux-launcher.tar.gz Linux
+          sha256sum ReStreet-Linux-launcher.tar.gz > ReStreet-Linux-launcher.tar.gz.sha256
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ReStreet-Linux-launcher
+          path: |
+            ReStreet-Linux-launcher.tar.gz
+            ReStreet-Linux-launcher.tar.gz.sha256
