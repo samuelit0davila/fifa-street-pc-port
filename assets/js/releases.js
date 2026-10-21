@@ -1,6 +1,65 @@
 // Snapshot of the latest GitHub releases (offline fallback; the page refreshes it from the GitHub API when online).
 window.RELEASES = [
  {
+  "tag_name": "v2.0.7-online-beta",
+  "name": "ReStreet v2.0.7 — ONLINE BETA (keyboard fix)",
+  "published_at": "2026-10-21T14:40:07Z",
+  "body": "## ReStreet 2.0.7 — fixes\n\n- **Keyboard: A and B did nothing** (stuck on the \"INFORMATION — autosave\" pop-up). Buttons with two keys in the launcher's Controls page (A = J / Enter, B = K / Backspace, or the mouse buttons in the keyboard + mouse layout) were ignored by the game since 2.0. Both keys now work.\n- **Keyboard: skill-move keys** (right stick, the arrow keys in the keyboard-only layout) now work, and turning off \"Mouse for skill moves\" really leaves the mouse free.\n- On the **PRESS START** screen, press **Esc** (Start). Wait for the intro to end first: the game ignores keys while it plays.\n\nIf a crash happens, send us `Binaries\\crash_motivo.txt` and the logs from `Binaries\\Logs`.\nOn AMD graphics cards, use Direct3D 12 (Vulkan can crash in the AMD driver).\n",
+  "html_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v2.0.7-online-beta",
+  "assets": [
+   {
+    "name": "ReStreet-2.0.7-Setup.exe",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.7-online-beta/ReStreet-2.0.7-Setup.exe"
+   },
+   {
+    "name": "ReStreet-2.0.7-Setup.exe.sha256",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.7-online-beta/ReStreet-2.0.7-Setup.exe.sha256"
+   },
+   {
+    "name": "ReStreet-Linux-launcher.tar.gz",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.7-online-beta/ReStreet-Linux-launcher.tar.gz"
+   },
+   {
+    "name": "ReStreet-Linux-launcher.tar.gz.sha256",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.7-online-beta/ReStreet-Linux-launcher.tar.gz.sha256"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.0.6-online-beta",
+  "name": "ReStreet v2.0.6 — ONLINE BETA (crash and save fixes)",
+  "published_at": "2026-10-21T04:15:03Z",
+  "body": "## ReStreet 2.0.6 — fixes\n\n- **Crash in the middle of a match** (\"memory at 0x0000000100000000 could not be read\", exit code -1073741819) fixed: when the game's own memory filled up, some of its requests got nothing. Every request is now covered, and borrowed memory is given back and reused.\n- **Crash ~2 seconds after start** on PCs whose sound device refuses to be opened twice: the game now keeps the first working audio setup.\n- **World Tour progress from 2.0.0/2.0.1** (saved under your online name) is loaded again: if your save folder has no save with data, your own save is brought back automatically.\n- **\"Save file corrupt\" after a crash while saving**: the empty save is skipped instead of offered for deletion, and a deleted save is now kept in `_apagados` (last 10) instead of being destroyed.\n- **Portuguese (PT-BR)** chosen in the launcher now really shows the game in Portuguese.\n- **Achievements** load again when your Windows user name has accents or non-Latin letters.\n- **Launcher rooms**: the \"Loading game\" page is now fully silent (no EA SPORTS intro sound behind it).\n\nIf a crash happens, send us `Binaries\\crash_motivo.txt` and the logs from `Binaries\\Logs`.\nOn AMD graphics cards, use Direct3D 12 (Vulkan can crash in the AMD driver).\n",
+  "html_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v2.0.6-online-beta",
+  "assets": [
+   {
+    "name": "ReStreet-2.0.6-Setup.exe",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.6-online-beta/ReStreet-2.0.6-Setup.exe"
+   },
+   {
+    "name": "ReStreet-2.0.6-Setup.exe.sha256",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.6-online-beta/ReStreet-2.0.6-Setup.exe.sha256"
+   }
+  ]
+ },
+ {
+  "tag_name": "v2.0.5-online-beta",
+  "name": "ReStreet v2.0.5 — ONLINE BETA (crash and sign-in fixes)",
+  "published_at": "2026-10-20T22:37:52Z",
+  "body": "## ReStreet 2.0.5 — fixes\n\n- **Crash entering a match (World Tour and others)** fixed: the game ran out of its own GPU memory when loading players' heads and stopped with an error. It now uses the free memory instead.\n- **Online sign-in** works again when the server is slow (it gave up after 1 second and showed OSDK_SIGNIN_REQUIRED).\n- **Crash ~30 s after start** when the save folder path has special characters.\n- **Ultrawide (21:9) screens**: no more crash loading a match.\n- **\"Settings File damaged\" / World Tour not saving** with OneDrive or a blocked Documents folder.\n- **My Squad player faces** are no longer noise.\n- **Launcher rooms** start the game on time, also with the launcher minimized.\n- **Older CPUs without AVX2** (before ~2015): the launcher now uses a build made for them.\n\nIf a crash happens, send us `Binaries\\crash_motivo.txt` and the logs from `Binaries\\Logs`.\nOn AMD graphics cards, use Direct3D 12 (Vulkan can crash in the AMD driver).\n",
+  "html_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v2.0.5-online-beta",
+  "assets": [
+   {
+    "name": "ReStreet-2.0.5-Setup.exe",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.5-online-beta/ReStreet-2.0.5-Setup.exe"
+   },
+   {
+    "name": "ReStreet-2.0.5-Setup.exe.sha256",
+    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0.5-online-beta/ReStreet-2.0.5-Setup.exe.sha256"
+   }
+  ]
+ },
+ {
   "tag_name": "v2.0.4-online-beta",
   "name": "ReStreet v2.0.4 — ONLINE BETA (sign-in fix)",
   "published_at": "2026-10-19T23:33:57Z",
@@ -82,57 +141,6 @@ window.RELEASES = [
    {
     "name": "ReStreet-2.0-Setup.exe.sha256",
     "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v2.0-online-beta/ReStreet-2.0-Setup.exe.sha256"
-   }
-  ]
- },
- {
-  "tag_name": "v1.5.7-online-beta",
-  "name": "ReStreet v1.5.7 — ONLINE BETA",
-  "published_at": "2026-10-18T19:29:20Z",
-  "body": "# ReStreet v1.5.7 — ONLINE BETA 🔧\n\nA fix for matches from the launcher's **Matches** tab. On v1.5.1 or newer the launcher offers this update by itself: press **Update now**.\n\n## What's fixed\n\n### Matches no longer get stuck on \"loading\"\n- If your game was **already open** when someone joined your match (or when you joined theirs), the game often stayed on its menu and the match was never created: the other player waited on the loading screen forever.\n- Now the launcher **restarts your game by itself** when the match fills up, and the game goes straight to the match lobby as usual. The launcher tells you when this happens.\n- Tip: you can post or join a match with the game closed or open, both work now.\n\n### Friend invites\n- Invites from a player whose game had crashed earlier could send you to that old, closed game and leave you loading forever. The server now always sends you to the game your friend has open right now.\n\n## How to install\n\n- **On v1.5.1 or newer:** open the launcher and press **Update now**.\n- **On v1.3, v1.4 or v1.5:** close the launcher and the game, run **ReStreet-1.5.7-Online-Beta.exe**, pick your ReStreet folder, your online name and your server.\n\nYour saves, settings and online name are kept.\n",
-  "html_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v1.5.7-online-beta",
-  "assets": [
-   {
-    "name": "ReStreet-1.5.7-Online-Beta.exe",
-    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v1.5.7-online-beta/ReStreet-1.5.7-Online-Beta.exe"
-   },
-   {
-    "name": "ReStreet-1.5.7-Online-Beta.exe.sha256",
-    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v1.5.7-online-beta/ReStreet-1.5.7-Online-Beta.exe.sha256"
-   }
-  ]
- },
- {
-  "tag_name": "v1.5.6-online-beta",
-  "name": "ReStreet v1.5.6 — ONLINE BETA",
-  "published_at": "2026-10-18T17:21:38Z",
-  "body": "# ReStreet v1.5.6 — ONLINE BETA ⚡\n\nA performance update for weaker PCs. On v1.5.1 or newer the launcher offers this update by itself: press **Update now**.\n\n## What's new\n\n### Smoother on 4-core CPUs and laptops\n- While the game waits for the graphics card, it now gives the CPU to the parts that are doing work (graphics commands, audio). Before, those parts sometimes had to wait.\n- In our test on a PC limited to 4 cores / 8 threads, the average went from **145 to 160–171 FPS**. The biggest gain is on PCs that use the whole CPU.\n\n### Better performance reports\n- The launcher's performance report now always records **which graphics card the game really used**, and whether it is a **built-in (integrated) GPU**, on every PC.\n- This tells us which machines struggle, so the next updates can target them.\n\n## How to install\n\n- **On v1.5.1 or newer:** open the launcher and press **Update now**.\n- **On v1.3, v1.4 or v1.5:** close the launcher and the game, run **ReStreet-1.5.6-Online-Beta.exe**, pick your ReStreet folder, your online name and your server.\n\nYour saves, settings and online name are kept.\n\n## Tip if the game feels choppy\nIf the FPS counter is high but the game doesn't feel smooth, turn on **VSync** in the launcher. On a laptop with an NVIDIA card, also set the game to **High-performance NVIDIA processor** in NVIDIA Control Panel → Manage 3D settings → Program settings.\n",
-  "html_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v1.5.6-online-beta",
-  "assets": [
-   {
-    "name": "ReStreet-1.5.6-Online-Beta.exe",
-    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v1.5.6-online-beta/ReStreet-1.5.6-Online-Beta.exe"
-   },
-   {
-    "name": "ReStreet-1.5.6-Online-Beta.exe.sha256",
-    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v1.5.6-online-beta/ReStreet-1.5.6-Online-Beta.exe.sha256"
-   }
-  ]
- },
- {
-  "tag_name": "v1.5.5-online-beta",
-  "name": "ReStreet v1.5.5 — ONLINE BETA",
-  "published_at": "2026-10-18T08:34:53Z",
-  "body": "# ReStreet v1.5.5 — ONLINE BETA 🌍⚽\n\nMatches that open by themselves, stadium photos, keyboard controls, a new folder layout and many fixes. On v1.5.1 or newer the launcher offers this update by itself: press **Update now**.\n\n## What's new\n\n### Matches open by themselves\n- Post a match in the **Matches** tab: as soon as someone joins, **both games open and go straight to the match lobby**. No buttons to press while it loads.\n- Pick the stadium **by its photo**: the stadiums are now a row of pictures, and the **▶ Post match** button is right on the photo you choose.\n- Stadium names are the same as in the game (for example **Plaça de Catalunya**).\n\n### Play with the keyboard\n- New **Controls** page in the launcher: turn on **Play with keyboard** and pick a layout made for FIFA Street:\n  - **Keyboard + mouse** (recommended): WASD to move, the mouse for skill moves, left click pass, right click shoot.\n  - **Keyboard only**: WASD to move, J/K/L/I to pass and shoot, arrows for skill moves.\n- Change any key: click it and press the new one. Shift, Ctrl and Alt work as keys too (sprint on Shift while you move).\n- A controller still works at the same time.\n\n### New folder layout\n- Like the FIFA games on PC: **`Game`** now holds the game files and **`Binaries`** holds the game program, its files and **Logs**.\n- Your folder is moved to the new layout automatically when you update. Nothing is copied, and your saves, settings and online name are kept.\n- Logs for support are now in **`Binaries\\Logs`**.\n\n### Fixes\n- **\"Your Gamer Profile does not have the correct permissions\"** when a friend joined your lobby or after a match: fixed on the servers. A failed join no longer drops the player.\n- **Pink / magenta crowds** when two copies of the game ran on the same PC.\n- **Stutter in the first matches of every session:** new shaders are now saved, so they are not prepared again each time you play.\n- **FPS counter:** it now also shows the slowest moment (**\"70 FPS - LOW 22\"**), so the number matches what you see.\n- **Antivirus warnings in the installer** about `TracyClient.dll`: the file is gone (the game never used it).\n- The update window now has the same look as the launcher, and finds your ReStreet folder in more places.\n\n## How to install\n\n- **On v1.5.1 or newer:** open the launcher and press **Update now**.\n- **On v1.3, v1.4 or v1.5:** close the launcher and the game, run **ReStreet-1.5.5-Online-Beta.exe**, pick your ReStreet folder, your online name and your server.\n\nYour saves, settings and online name are kept.\n\n## Known issues (it's a beta!)\n\n- No Rematch option at the end of a match yet.\n- Videos (Street Network uploads) are turned off for now.\n- Division and Cup matches are found with the in-game search, not with launcher matches.\n- Do not leave your player idle in a match: the game removes inactive players.\n\nFound a bug? Open a ticket on Discord and attach the files from `Binaries\\Logs`.\n\n## Remove\n\nRun the patch again and choose **Remove the online patch**. Your offline game goes back to v1.3 (in the new folder layout).\n\n---\n\n*Thanks to **Emran_Ahm3d** for the Discord Rich Presence integration and the folder layout idea.*\n*Country leaderboard: IP to country data by [DB-IP.com](https://db-ip.com) (CC BY 4.0).*\n*ReStreet is a fan project. You need your own copy of FIFA Street (2012). Not affiliated with EA.*\n",
-  "html_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/tag/v1.5.5-online-beta",
-  "assets": [
-   {
-    "name": "ReStreet-1.5.5-Online-Beta.exe",
-    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v1.5.5-online-beta/ReStreet-1.5.5-Online-Beta.exe"
-   },
-   {
-    "name": "ReStreet-1.5.5-Online-Beta.exe.sha256",
-    "browser_download_url": "https://github.com/samuelit0davila/fifa-street-pc-port/releases/download/v1.5.5-online-beta/ReStreet-1.5.5-Online-Beta.exe.sha256"
    }
   ]
  }
