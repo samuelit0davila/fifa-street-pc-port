@@ -64,14 +64,36 @@ Estimates from testing, not guarantees.
 
 | | |
 |---|---|
-| System | Windows 10 or 11, 64-bit |
+| System | Windows 10 or 11, 64-bit (Linux: see below) |
 | CPU | x86-64; a quad-core is safest |
 | GPU | Direct3D 12 or Vulkan with up-to-date drivers |
 | RAM | 8 GB |
 | Disk | about 12 GB free for a new install |
 | Game | Your own FIFA Street (2012) Xbox 360 ISO |
 
-On a weaker PC, open **Graphics** in the launcher: use **1x** internal resolution and turn off ambient occlusion and MSAA. Linux with Wine / Proton has not been tested on 2.0 yet.
+On a weaker PC, open **Graphics** in the launcher: use **1x** internal resolution and turn off ambient occlusion and MSAA.
+
+## Linux (beta)
+
+ReStreet runs on Linux through Proton, with a native Linux launcher. Tested on CachyOS with an AMD GPU; online play on Linux is not fully tested yet.
+
+1. Install `umu-launcher`, `webkit2gtk-4.1` and a Proton build (Proton-CachyOS or GE-Proton recommended). On Arch / CachyOS:
+
+   ```bash
+   sudo pacman -S umu-launcher webkit2gtk-4.1
+   ```
+
+2. Install ReStreet from your ISO. The setup's normal window does not work under Proton, so use its install mode instead (your ISO, the folder to install to, your online name):
+
+   ```bash
+   umu-run ReStreet-2.0.7-Setup.exe --iso-install-test 'Z:\home\you\FIFASTREET.iso' 'Z:\home\you\Games\ReStreet' YourName
+   ```
+
+   `Z:` is your Linux `/`, so `Z:\home\you\...` is `/home/you/...`.
+3. Download **ReStreet-Linux-launcher.tar.gz** from the [latest release](https://github.com/samuelit0davila/fifa-street-pc-port/releases/latest) and extract it into your ReStreet folder, next to `Binaries` and `Game`.
+4. Run `Linux/restreet-launcher` and press **PLAY**. Press **Shortcut** in the launcher to add ReStreet to your applications menu.
+
+On Linux the launcher cannot update itself yet: to update, download the new launcher and run the new setup.
 
 ## Online play
 
