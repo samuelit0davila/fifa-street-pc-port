@@ -202,6 +202,8 @@ public partial class LauncherForm
             case "shortcut": CreateDesktopShortcut(); break;
             case "state": if (pendingUpdate is { } pu) PostToPage(new { type = "update", version = pu.Version, notes = pu.Notes }); PushPerfHistory(); break;
             case "perfHistory": PushPerfHistory(); return;
+            case "saves": PushSaves(); return;
+            case "savesRestore": RestoreSaveFromPage(m.TryGetProperty("id", out var sid) ? sid.GetString() : null); return;
             case "updateGo": _ = InstallUpdateAsync(); return;
             case "perfShare": if (m.TryGetProperty("value", out var ps)) SetPerfSharing(ps.GetBoolean()); return;
             case "controls": if (m.TryGetProperty("value", out var cv) && cv.ValueKind == JsonValueKind.Object) SetControls(cv); break;

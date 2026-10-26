@@ -467,6 +467,22 @@
     "players": ["jogadores", "jugadores", "joueurs", "Spieler", "giocatori"],
     "Checked in": ["Presença confirmada", "Asistencia confirmada", "Confirmé", "Eingecheckt", "Presenza confermata"],
     "Signed up": ["Inscrito", "Inscrito", "Inscrit", "Angemeldet", "Iscritto"],
+    "WORLD TOUR SAVES": ["SAVES DO WORLD TOUR", "PARTIDAS DEL WORLD TOUR", "SAUVEGARDES WORLD TOUR", "WORLD-TOUR-SPIELSTÄNDE", "SALVATAGGI WORLD TOUR"],
+    "Lost your World Tour career? The game keeps your last 10 saves. Pick the one from before it happened and restore it. A full backup of your saves is made first.": [
+      "Perdeu sua carreira do World Tour? O jogo guarda seus últimos 10 saves. Escolha o de antes do problema e restaure. Antes é feita uma cópia de segurança de todos os seus saves.",
+      "¿Perdiste tu carrera del World Tour? El juego guarda tus últimas 10 partidas. Elige la de antes del problema y restáurala. Antes se hace una copia de seguridad de todas tus partidas.",
+      "Tu as perdu ta carrière World Tour ? Le jeu garde tes 10 dernières sauvegardes. Choisis celle d'avant le problème et restaure-la. Une copie de toutes tes sauvegardes est faite avant.",
+      "World-Tour-Karriere verloren? Das Spiel behält deine letzten 10 Spielstände. Wähle den von vor dem Problem und stelle ihn wieder her. Vorher wird eine Sicherung aller Spielstände erstellt.",
+      "Hai perso la carriera World Tour? Il gioco tiene gli ultimi 10 salvataggi. Scegli quello di prima del problema e ripristinalo. Prima viene fatta una copia di tutti i salvataggi."],
+    "SAVED": ["SALVO", "GUARDADA", "ENREGISTRÉE", "GESPEICHERT", "SALVATO"],
+    "REPLACED": ["SUBSTITUÍDO", "SUSTITUIDA", "REMPLACÉE", "ERSETZT", "SOSTITUITO"],
+    "SIZE": ["TAMANHO", "TAMAÑO", "TAILLE", "GRÖSSE", "DIMENSIONE"],
+    "In use": ["Em uso", "En uso", "Utilisée", "In Benutzung", "In uso"],
+    "Restore": ["Restaurar", "Restaurar", "Restaurer", "Wiederherstellen", "Ripristina"],
+    "Restore this save?": ["Restaurar este save?", "¿Restaurar esta partida?", "Restaurer cette sauvegarde ?", "Diesen Spielstand wiederherstellen?", "Ripristinare questo salvataggio?"],
+    "No World Tour saves found on this PC.": ["Nenhum save do World Tour encontrado neste PC.", "No se encontraron partidas del World Tour en este PC.", "Aucune sauvegarde World Tour sur ce PC.", "Keine World-Tour-Spielstände auf diesem PC.", "Nessun salvataggio World Tour su questo PC."],
+    "Close the game first, then restore the save": ["Feche o jogo primeiro e depois restaure o save", "Cierra el juego primero y luego restaura la partida", "Ferme d'abord le jeu, puis restaure la sauvegarde", "Schließe zuerst das Spiel, dann stelle den Spielstand wieder her", "Chiudi prima il gioco, poi ripristina il salvataggio"],
+    "Save restored. Your previous save and a full backup were kept.": ["Save restaurado. O save anterior e uma cópia de segurança completa foram guardados.", "Partida restaurada. Se guardaron la partida anterior y una copia de seguridad completa.", "Sauvegarde restaurée. L'ancienne sauvegarde et une copie complète ont été gardées.", "Spielstand wiederhergestellt. Der vorherige Spielstand und eine vollständige Sicherung wurden behalten.", "Salvataggio ripristinato. Il salvataggio precedente e una copia completa sono stati conservati."],
     "Check in now": ["Confirme agora", "Confirma ahora", "Confirme maintenant", "Jetzt einchecken", "Conferma ora"],
     "checked in": ["confirmados", "confirmados", "confirmés", "eingecheckt", "confermati"],
     "signed up": ["inscritos", "inscritos", "inscrits", "angemeldet", "iscritti"],
@@ -493,6 +509,12 @@
   };
   // Texts with a name or a number inside: $1 is the captured part as is, $T1 the captured part translated.
   const PATTERNS = [
+    [/^The save from (.+) becomes your save again\. The one in use now is kept with the deleted saves, and a full backup is made first\. Close the game before you restore\.$/, [
+      "O save de $1 volta a ser o seu save. O que está em uso agora fica guardado com os saves apagados, e antes é feita uma cópia de segurança completa. Feche o jogo antes de restaurar.",
+      "La partida del $1 vuelve a ser tu partida. La que usas ahora se guarda con las partidas borradas, y antes se hace una copia de seguridad completa. Cierra el juego antes de restaurar.",
+      "La sauvegarde du $1 redevient ta sauvegarde. Celle utilisée maintenant est gardée avec les sauvegardes supprimées, et une copie complète est faite avant. Ferme le jeu avant de restaurer.",
+      "Der Spielstand vom $1 wird wieder dein Spielstand. Der aktuelle bleibt bei den gelöschten Spielständen, und vorher wird eine vollständige Sicherung erstellt. Schließe das Spiel vor dem Wiederherstellen.",
+      "Il salvataggio del $1 torna a essere il tuo. Quello in uso ora resta con i salvataggi cancellati, e prima viene fatta una copia completa. Chiudi il gioco prima di ripristinare."]],
     [/^SEASON (\d+)$/, ["TEMPORADA $1", "TEMPORADA $1", "SAISON $1", "SAISON $1", "STAGIONE $1"]],
     [/^Season (\d+)$/, ["Temporada $1", "Temporada $1", "Saison $1", "Saison $1", "Stagione $1"]],
     [/^Ends in (.+)$/, ["Termina em $1", "Termina en $1", "Se termine dans $1", "Endet in $1", "Finisce tra $1"]],

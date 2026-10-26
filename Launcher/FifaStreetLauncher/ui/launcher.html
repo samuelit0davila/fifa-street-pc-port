@@ -548,12 +548,19 @@ body.deck .old-only,body:not(.deck) .deck-only{display:none!important}
     <div class="sec old-only">COMPATIBILITY</div>
     <div class="grid2 old-only" style="margin-bottom:14px"><div class="field"><label>READBACK RESOLVE</label><div class="dd" data-id="readback"><button class="dd-btn" type="button"><span></span><i></i></button><div class="dd-list"></div></div></div></div>
     <div class="toggles old-only"><div class="tg" tabindex="0" role="switch" data-id="memexport"><div>Memory Export</div><div class="sw"></div></div><div class="tg" tabindex="0" role="switch" data-id="memexportFast"><div>Fast MemExport</div><div class="sw"></div></div><div class="tg" tabindex="0" role="switch" data-id="pageState"><div>Memory Page State</div><div class="sw"></div></div><div class="tg" tabindex="0" role="switch" data-id="occlusion"><div>Occlusion Queries</div><div class="sw"></div></div><div class="tg" tabindex="0" role="switch" data-id="asyncShaders"><div>Async Shaders</div><div class="sw"></div></div><div class="tg" tabindex="0" role="switch" data-id="frameStats"><div>Frame stats log</div><div class="sw"></div></div><div class="tg" tabindex="0" role="switch" data-id="perfShare"><div>Share performance reports</div><div class="sw"></div></div></div>
+    <div class="sec" style="margin-top:22px">WORLD TOUR SAVES</div>
+    <p class="sub">Lost your World Tour career? The game keeps your last 10 saves. Pick the one from before it happened and restore it. A full backup of your saves is made first.</p>
+    <table class="ptable" id="sTable"><thead><tr><th>SAVED</th><th>REPLACED</th><th>SIZE</th><th></th></tr></thead><tbody></tbody></table>
+    <p class="sub" id="sNote" style="margin-top:8px"></p>
     <div class="row" style="margin-top:20px"><button class="btn" data-cmd="logs">Open logs</button><button class="btn" data-cmd="folder">Open game folder</button><button class="btn" data-cmd="shortcut">Desktop shortcut</button></div>
   </div></section>
 </div>
 <div class="veil gone" id="perfAsk"><div class="toast"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div><b>Help make ReStreet faster</b>
   <p>After each session, send an anonymous performance report: your graphics card, processor, memory, settings and FPS. No name, no account. You can turn it off in Advanced.</p>
   <div class="btns"><button class="later" id="perfNo">No thanks</button><button class="go" id="perfYes">Share</button></div></div></div>
+<div class="veil gone" id="saveAsk"><div class="toast"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></div><b>Restore this save?</b>
+  <p id="saveAskText"></p>
+  <div class="btns"><button class="later" id="saveNo">Cancel</button><button class="go" id="saveYes">Restore</button></div></div></div>
 <div class="veil gone" id="updAsk"><div class="toast"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 4v12M6 11l6 6 6-6M5 20h14"/></svg></div><b id="updTitle">Update available</b>
   <p id="updText">A new version of ReStreet is ready. The launcher downloads it from GitHub, checks it and installs it for you. Your name, server and saves are kept.</p>
   <div class="upbar" id="updBar"><i></i></div>
@@ -620,6 +627,27 @@ addEventListener('keydown', e => {
 });
 const perfAnswer = v => { $('perfAsk').classList.add('gone'); send({cmd: 'perfShare', value: v}); };
 $('perfYes').onclick = () => perfAnswer(true); $('perfNo').onclick = () => perfAnswer(false);
+// World Tour saves (launcher SaveRestore.cs): the save in use and the ones the game deleted, newest first.
+let saveRows = [], savePick = null;
+const saveWhen = s => { if (!s) return '-'; const t = new Date(s); return t.toLocaleDateString() + ' ' + t.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}); };
+function renderSaves(d) {
+  saveRows = d.saves || [];
+  $('sTable').querySelector('tbody').innerHTML = saveRows.length ? saveRows.map((r, i) => '<tr><td>' + esc(saveWhen(r.Saved)) + '</td><td>' +
+    (r.Kind === 'current' ? '<b>In use</b>' : esc(saveWhen(r.Deleted))) + '</td><td>' + (r.Size / 1048576).toFixed(1) + ' MB</td><td>' +
+    (r.Kind === 'current' ? '' : '<button type="button" class="btn" data-save="' + i + '">Restore</button>') + '</td></tr>').join('')
+    : '<tr><td colspan="4">No World Tour saves found on this PC.</td></tr>';
+  $('sNote').textContent = d.note || '';
+  $('sNote').style.color = d.note ? (d.ok ? 'var(--green, #3fb950)' : 'var(--red)') : '';
+}
+$('sTable').onclick = e => {
+  const b = e.target.closest('[data-save]'); if (!b) return;
+  savePick = saveRows[Number(b.dataset.save)];
+  $('saveAskText').textContent = 'The save from ' + saveWhen(savePick.Saved) + ' becomes your save again. The one in use now is kept with the deleted saves, and a full backup is made first. Close the game before you restore.';
+  $('saveAsk').classList.remove('gone');
+};
+$('saveNo').onclick = () => { $('saveAsk').classList.add('gone'); savePick = null; };
+$('saveYes').onclick = () => { $('saveAsk').classList.add('gone'); if (savePick) send({cmd: 'savesRestore', id: savePick.Id}); savePick = null; };
+document.querySelector('[data-p=p-advanced]').addEventListener('click', () => send({cmd: 'saves'}));
 $('updLater').onclick = () => $('updAsk').classList.add('gone');
 $('updGo').onclick = () => { $('updBtns').style.display = 'none'; $('updBar').style.display = 'block'; $('updText').textContent = 'Downloading the update...'; send({cmd: 'updateGo'}); };
 function renderUpdate(d) {
@@ -1275,7 +1303,7 @@ setInterval(() => {
   }
 }, 3000);
 document.querySelector('[data-p=p-comp]').addEventListener('click', () => { compAt = {table: 0, tournaments: 0}; send({cmd: 'comp', action: 'me'}); });
-if (host) { host.addEventListener('message', e => !e.data ? 0 : e.data.type === 'social' ? renderSocial(e.data) : e.data.type === 'comp' ? renderComp(e.data) : e.data.type === 'perf' ? renderPerf(e.data) : e.data.type === 'perfHistory' ? renderHistory(e.data) : String(e.data.type).startsWith('update') ? renderUpdate(e.data) : render(e.data)); send({cmd: 'state'}); }
+if (host) { host.addEventListener('message', e => !e.data ? 0 : e.data.type === 'social' ? renderSocial(e.data) : e.data.type === 'comp' ? renderComp(e.data) : e.data.type === 'saves' ? renderSaves(e.data) : e.data.type === 'perf' ? renderPerf(e.data) : e.data.type === 'perfHistory' ? renderHistory(e.data) : String(e.data.type).startsWith('update') ? renderUpdate(e.data) : render(e.data)); send({cmd: 'state'}); }
 // Controller (Steam Deck, Xbox pad): D-pad / left stick move the focus to the nearest control on screen, A presses it,
 // B closes a list or dialog (else goes back to Home), LB / RB step through the pages. Only while a pad is connected.
 const PAD = {A: 0, B: 1, LB: 4, RB: 5, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15};
