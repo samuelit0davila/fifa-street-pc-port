@@ -144,6 +144,8 @@ public partial class LauncherForm : Form, ISceneHost, IUiScaled
         LoadDefaults();
         profileBox.SelectedIndex = 0;
         LoadSettings();
+        // A reinstall wrote a new online.json: put this player's key back before anything signs in with it.
+        PlayerKey.Sync(OnlineFiles());
         InitDeckOptions();
         applyingProfile = false;
         UpdateGraphicsApiState();

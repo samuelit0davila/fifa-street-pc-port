@@ -222,6 +222,17 @@ public partial class LauncherForm
             case "server":
                 if (m.TryGetProperty("address", out var a)) SwitchServer(a.GetString() ?? "");
                 break;
+            // Advanced > Online key (PlayerKey.cs): the recovery code, and a code from another PC.
+            case "keyCode": PostToPage(new { type = "key", code = PlayerKey.RecoveryCode(OnlineFiles()) }); return;
+            case "keyUse":
+            {
+                var result = gameRunning
+                    ? new PlayerKey.Result(false, "Close the game first.")
+                    : PlayerKey.UseCode(OnlineFiles(), m.TryGetProperty("code", out var kc) ? kc.GetString() : null);
+                PostToPage(new { type = "key", code = PlayerKey.RecoveryCode(OnlineFiles()), ok = result.Ok, note = result.Note });
+                if (result.Ok) UpdateStatus(ReadyText(), true);
+                break;
+            }
             case "social":
             case "chatSend":
             case "chatAction":
@@ -237,15 +248,21 @@ public partial class LauncherForm
         PushGlassState(true);
     }
 
+    // online.json beside this launcher (the one it reads) and the copy beside the game executable (Binaries\, or
+    // Game\ in installs before 1.5.5).
+    internal string[] OnlineFiles()
+    {
+        string exeFolder;
+        try { exeFolder = Path.GetDirectoryName(Path.GetFullPath(exePathBox.Text.Trim())) ?? AppContext.BaseDirectory; }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { exeFolder = AppContext.BaseDirectory; }
+        return new[] { Path.Combine(AppContext.BaseDirectory, "online.json"), Path.Combine(exeFolder, "online.json") };
+    }
+
     // Moves this install to another region: the same name and key, another server (online.json in both places).
     private void SwitchServer(string address)
     {
         if (gameRunning || !Regions.Any(r => r.Address == address)) return;
-        // The second copy sits beside the game executable (Binaries\, or Game\ in installs before 1.5.5).
-        string exeFolder;
-        try { exeFolder = Path.GetDirectoryName(Path.GetFullPath(exePathBox.Text.Trim())) ?? AppContext.BaseDirectory; }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { exeFolder = AppContext.BaseDirectory; }
-        foreach (string path in new[] { Path.Combine(AppContext.BaseDirectory, "online.json"), Path.Combine(exeFolder, "online.json") })
+        foreach (string path in OnlineFiles())
         {
             try
             {
@@ -329,7 +346,8 @@ public partial class LauncherForm
     }
 
     // ---------- Social (players, friends, chat): HTTP to the player's own server with their name and key ----------
-    private static readonly HttpClient SocialHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
+    // The User-Agent tells the server which launcher version a player uses (its personal-key log).
+    private static readonly HttpClient SocialHttp = new() { Timeout = TimeSpan.FromSeconds(6), DefaultRequestHeaders = { { "User-Agent", "ReStreetLauncher/" + LauncherVersion } } };
     private DateTime lastBackgroundSocial = DateTime.MinValue;
 
     // One retry: a single dropped connection (a busy moment on the server, Wi-Fi) must not look like an outage.

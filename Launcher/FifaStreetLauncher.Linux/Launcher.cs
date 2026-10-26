@@ -112,6 +112,8 @@ internal sealed partial class Launcher : IPageHost
 
         LoadSettings();
         if (deck) LoadDeckToml();
+        // A reinstall wrote a new online.json: put this player's key back before anything signs in with it.
+        PlayerKey.Sync(OnlineFiles());
         UpdateEnabled();
         status = ReadyText();
     }
@@ -315,11 +317,14 @@ internal sealed partial class Launcher : IPageHost
         return online == null ? "Online is not set up. Run the online patch again" : "Ready to play online as " + online.Value.Name;
     }
 
+    // online.json in the install folder (the one the launcher reads) and the copy beside the game in Binaries/.
+    private string[] OnlineFiles() => new[] { Path.Combine(root, "online.json"), Path.Combine(binaries, "online.json") };
+
     // Moves this install to another region: the same name and key, another server (online.json in both places).
     private void SwitchServer(string address)
     {
         if (gameRunning || !Regions.Any(r => r.Address == address)) return;
-        foreach (string path in new[] { Path.Combine(root, "online.json"), Path.Combine(binaries, "online.json") })
+        foreach (string path in OnlineFiles())
         {
             try
             {
@@ -424,6 +429,17 @@ internal sealed partial class Launcher : IPageHost
             case "perfShare": if (m.TryGetProperty("value", out var ps) && ps.ValueKind is JsonValueKind.True or JsonValueKind.False) { perfShare = ps.GetBoolean(); SaveSettings(); } return;
             case "controls": if (m.TryGetProperty("value", out var cv) && cv.ValueKind == JsonValueKind.Object) SetControls(cv); break;
             case "server": if (m.TryGetProperty("address", out var a)) SwitchServer(a.GetString() ?? ""); break;
+            // Advanced > Online key (PlayerKey.cs): the recovery code, and a code from another PC.
+            case "keyCode": Post(new { type = "key", code = PlayerKey.RecoveryCode(OnlineFiles()) }); return;
+            case "keyUse":
+            {
+                var result = gameRunning
+                    ? new PlayerKey.Result(false, "Close the game first.")
+                    : PlayerKey.UseCode(OnlineFiles(), m.TryGetProperty("code", out var kc) && kc.ValueKind == JsonValueKind.String ? kc.GetString() : null);
+                Post(new { type = "key", code = PlayerKey.RecoveryCode(OnlineFiles()), ok = result.Ok, note = result.Note });
+                if (result.Ok) lock (sync) status = ReadyText();
+                break;
+            }
             case "social" or "chatSend" or "chatAction" or "friend" or "room":
                 _ = SocialAsync(cmd, m);
                 return;

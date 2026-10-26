@@ -552,6 +552,11 @@ body.deck .old-only,body:not(.deck) .deck-only{display:none!important}
     <p class="sub">Lost your World Tour career? The game keeps your last 10 saves. Pick the one from before it happened and restore it. A full backup of your saves is made first.</p>
     <table class="ptable" id="sTable"><thead><tr><th>SAVED</th><th>REPLACED</th><th>SIZE</th><th></th></tr></thead><tbody></tbody></table>
     <p class="sub" id="sNote" style="margin-top:8px"></p>
+    <div class="sec" style="margin-top:22px">ONLINE KEY</div>
+    <p class="sub">Your key keeps your online name yours. This PC keeps a copy, so reinstalling ReStreet keeps it. To play with the same name on another PC, use this recovery code there. Keep it private: anyone who has it can play as you.</p>
+    <div class="pathrow"><div class="field"><label>RECOVERY CODE</label><input id="okCode" type="password" readonly></div><div class="row"><button class="btn" type="button" id="okShow">Show</button><button class="btn" type="button" id="okCopy">Copy</button></div></div>
+    <div class="pathrow"><div class="field"><label>CODE FROM ANOTHER PC</label><input id="okPaste" placeholder="Paste a recovery code" autocomplete="off" spellcheck="false"></div><button class="btn" type="button" id="okUse">Use code</button></div>
+    <p class="sub" id="okNote" role="status"></p>
     <div class="row" style="margin-top:20px"><button class="btn" data-cmd="logs">Open logs</button><button class="btn" data-cmd="folder">Open game folder</button><button class="btn" data-cmd="shortcut">Desktop shortcut</button></div>
   </div></section>
 </div>
@@ -647,7 +652,22 @@ $('sTable').onclick = e => {
 };
 $('saveNo').onclick = () => { $('saveAsk').classList.add('gone'); savePick = null; };
 $('saveYes').onclick = () => { $('saveAsk').classList.add('gone'); if (savePick) send({cmd: 'savesRestore', id: savePick.Id}); savePick = null; };
-document.querySelector('[data-p=p-advanced]').addEventListener('click', () => send({cmd: 'saves'}));
+document.querySelector('[data-p=p-advanced]').addEventListener('click', () => { send({cmd: 'saves'}); send({cmd: 'keyCode'}); });
+// Online key (launcher PlayerKey.cs): the recovery code of this PC, and a code from another PC.
+function renderKey(d) {
+  $('okCode').value = d.code || '';
+  $('okCode').placeholder = d.code ? '' : 'Online is not set up';
+  if (d.note !== undefined) { $('okNote').textContent = d.note; $('okNote').style.color = d.ok ? 'var(--green, #3fb950)' : 'var(--red)'; }
+  if (d.ok) $('okPaste').value = '';
+}
+$('okShow').onclick = () => { const c = $('okCode'), hidden = c.type === 'password'; c.type = hidden ? 'text' : 'password'; $('okShow').textContent = hidden ? 'Hide' : 'Show'; };
+$('okCopy').onclick = () => {
+  const c = $('okCode'); if (!c.value) return;
+  const done = () => { $('okNote').textContent = 'Recovery code copied.'; $('okNote').style.color = ''; };
+  if (navigator.clipboard) navigator.clipboard.writeText(c.value).then(done, () => 0);
+  else { const t = c.type; c.type = 'text'; c.select(); document.execCommand('copy'); c.type = t; done(); }
+};
+$('okUse').onclick = () => { const v = $('okPaste').value.trim(); if (v) send({cmd: 'keyUse', code: v}); };
 $('updLater').onclick = () => $('updAsk').classList.add('gone');
 $('updGo').onclick = () => { $('updBtns').style.display = 'none'; $('updBar').style.display = 'block'; $('updText').textContent = 'Downloading the update...'; send({cmd: 'updateGo'}); };
 function renderUpdate(d) {
@@ -1303,7 +1323,7 @@ setInterval(() => {
   }
 }, 3000);
 document.querySelector('[data-p=p-comp]').addEventListener('click', () => { compAt = {table: 0, tournaments: 0}; send({cmd: 'comp', action: 'me'}); });
-if (host) { host.addEventListener('message', e => !e.data ? 0 : e.data.type === 'social' ? renderSocial(e.data) : e.data.type === 'comp' ? renderComp(e.data) : e.data.type === 'saves' ? renderSaves(e.data) : e.data.type === 'perf' ? renderPerf(e.data) : e.data.type === 'perfHistory' ? renderHistory(e.data) : String(e.data.type).startsWith('update') ? renderUpdate(e.data) : render(e.data)); send({cmd: 'state'}); }
+if (host) { host.addEventListener('message', e => !e.data ? 0 : e.data.type === 'social' ? renderSocial(e.data) : e.data.type === 'comp' ? renderComp(e.data) : e.data.type === 'saves' ? renderSaves(e.data) : e.data.type === 'key' ? renderKey(e.data) : e.data.type === 'perf' ? renderPerf(e.data) : e.data.type === 'perfHistory' ? renderHistory(e.data) : String(e.data.type).startsWith('update') ? renderUpdate(e.data) : render(e.data)); send({cmd: 'state'}); }
 // Controller (Steam Deck, Xbox pad): D-pad / left stick move the focus to the nearest control on screen, A presses it,
 // B closes a list or dialog (else goes back to Home), LB / RB step through the pages. Only while a pad is connected.
 const PAD = {A: 0, B: 1, LB: 4, RB: 5, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15};
