@@ -85,7 +85,7 @@ public partial class LauncherForm
         // Wine/Proton: WebView2 is not reliable there, so the same page opens in the system browser.
         if (RunningOnWine() || Environment.GetEnvironmentVariable("RESTREET_BROWSER_UI") == "1")
         {
-            if (RunningOnWine()) await EnsureViewerAsync();  // first run on Proton: fetch the viewer once
+            if (RunningOnWine() && !RunningOnMac()) await EnsureViewerAsync();  // first run on Proton: fetch the viewer once
             StartBrowserUi();
             if (browserActive) StartPageServices();
             RevealWindow();
@@ -562,6 +562,8 @@ public partial class LauncherForm
         "tournament_full" => "The tournament is full",
         "not_signed_up" => "Sign up first",
         "checkin_not_open" => "Check-in opens 10 minutes before the start",
+        "real_team_required" => "Tournaments are played with real teams: pick a club or a national team",
+        "already_in_match" => "You already have a match waiting: play it first",
         "unknown_action" or "route_not_found" => "This server does not have competitive play yet",
         _ => "Could not do that: " + code,
     };

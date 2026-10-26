@@ -10,7 +10,7 @@ namespace FifaStreetLauncher;
 // name, key and server, and reopens the launcher) and closes the launcher. Only installs that have the online patch.
 public partial class LauncherForm
 {
-    internal const string LauncherVersion = "2.1.1";
+    internal const string LauncherVersion = "2.1.2";
     private const string ReleasesApi = "https://api.github.com/repos/samuelit0davila/fifa-street-pc-port/releases/latest";
     private static readonly HttpClient UpdateHttp = CreateUpdateHttp();
     private (string Version, string ExeUrl, string ShaUrl, string Notes)? pendingUpdate;
@@ -34,17 +34,38 @@ public partial class LauncherForm
         Uri.TryCreate(url, UriKind.Absolute, out var u) && u.Scheme == "https" &&
         (u.Host == "github.com" || u.Host.EndsWith(".githubusercontent.com", StringComparison.Ordinal));
 
+    private System.Windows.Forms.Timer? updateTimer;
+
+    // A launcher left open for days still hears about a new version: ask GitHub again every 2 hours (its API allows
+    // 60 requests an hour per address) until one is found.
+    private void StartUpdateChecks()
+    {
+        _ = CheckForUpdateAsync();
+        updateTimer = new System.Windows.Forms.Timer { Interval = 2 * 60 * 60 * 1000 };
+        updateTimer.Tick += (_, _) => { if (pendingUpdate == null) _ = CheckForUpdateAsync(); };
+        updateTimer.Start();
+    }
+
     private async Task CheckForUpdateAsync()
     {
-        if (LoadOnlineConfig() == null) return;  // offline installs update with the full installer
+        if (!await FindUpdateAsync()) return;
+        // The page may still be loading (it asks again with "state"); give it a moment to say whether it is up.
+        await Task.Delay(4000);
+        await OfferUpdateAsync();
+    }
+
+    // Sets pendingUpdate when GitHub has a newer release with a patch; true when it did.
+    private async Task<bool> FindUpdateAsync(CancellationToken cancel = default)
+    {
+        if (LoadOnlineConfig() == null) return false;  // offline installs update with the full installer
         // RESTREET_NO_UPDATE=1: never offer an update (a self-built launcher would be replaced by the official one).
-        if (Environment.GetEnvironmentVariable("RESTREET_NO_UPDATE") == "1") return;
+        if (Environment.GetEnvironmentVariable("RESTREET_NO_UPDATE") == "1") return false;
         try
         {
-            using var doc = JsonDocument.Parse(await UpdateHttp.GetStringAsync(ReleasesApi));
+            using var doc = JsonDocument.Parse(await UpdateHttp.GetStringAsync(ReleasesApi, cancel));
             var r = doc.RootElement;
             string tag = r.GetProperty("tag_name").GetString() ?? "";
-            if (ParseVersion(tag) <= ParseVersion(LauncherVersion)) return;
+            if (ParseVersion(tag) <= ParseVersion(LauncherVersion)) return false;
             string? exe = null, sha = null;
             foreach (var a in r.GetProperty("assets").EnumerateArray())
             {
@@ -53,31 +74,36 @@ public partial class LauncherForm
                 if (name.EndsWith(".exe.sha256", StringComparison.OrdinalIgnoreCase)) sha = url;
                 else if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) exe = url;
             }
-            if (exe == null || sha == null) return;
+            if (exe == null || sha == null) return false;
             string notes = r.TryGetProperty("name", out var n) ? n.GetString() ?? tag : tag;
             pendingUpdate = (ParseVersion(tag).ToString(), exe, sha, notes);
-            // The page may still be loading (it asks again with "state"); give it a moment to say whether it is up.
-            await Task.Delay(4000);
-            if (PageConnected)
-            {
-                PostToPage(new { type = "update", version = pendingUpdate.Value.Version, notes });
-            }
-            else
-            {
-                // Classic interface (no WebView2, for example on Wine/Proton): ask with a plain dialog.
-                var answer = MessageBox.Show(this, "ReStreet " + pendingUpdate.Value.Version + " is available.\n\nThe launcher downloads it from GitHub, " +
-                    "checks it and installs it for you. Your name, server and saves are kept.\n\nUpdate now?", "ReStreet update",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-                if (answer == DialogResult.Yes)
-                {
-                    UpdateStatus("Downloading the update...", true);
-                    await InstallUpdateAsync();
-                }
-            }
+            return true;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            // No network or GitHub unavailable: try again next start.
+            // No network or GitHub unavailable: try again later.
+            return false;
+        }
+    }
+
+    private async Task OfferUpdateAsync()
+    {
+        if (pendingUpdate is not { } u) return;
+        if (PageConnected)
+        {
+            PostToPage(new { type = "update", version = u.Version, notes = u.Notes });
+        }
+        else
+        {
+            // Classic interface (no WebView2, for example on Wine/Proton): ask with a plain dialog.
+            var answer = MessageBox.Show(this, "ReStreet " + u.Version + " is available.\n\nThe launcher downloads it from GitHub, " +
+                "checks it and installs it for you. Your name, server and saves are kept.\n\nUpdate now?", "ReStreet update",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (answer == DialogResult.Yes)
+            {
+                UpdateStatus("Downloading the update...", true);
+                await InstallUpdateAsync();
+            }
         }
     }
 

@@ -34,6 +34,26 @@ public partial class LauncherForm
         return ntdll != IntPtr.Zero && GetProcAddress(ntdll, "wine_get_version") != IntPtr.Zero;
     }
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void WineHostVersion(out IntPtr sysname, out IntPtr release);
+
+    // Wine on macOS (CrossOver): the host is "Darwin". The Electron viewer there showed only a white window (2.1), while
+    // the Mac's own browser shows the launcher page fine, so on a Mac the page opens in the default browser.
+    internal static bool RunningOnMac()
+    {
+        IntPtr ntdll = GetModuleHandleA("ntdll.dll");
+        IntPtr fn = ntdll == IntPtr.Zero ? IntPtr.Zero : GetProcAddress(ntdll, "wine_get_host_version");
+        if (fn == IntPtr.Zero) return false;
+        try
+        {
+            Marshal.GetDelegateForFunctionPointer<WineHostVersion>(fn)(out IntPtr sysname, out _);
+            return Marshal.PtrToStringAnsi(sysname) == "Darwin";
+        }
+        catch (Exception ex) when (ex is MarshalDirectiveException or AccessViolationException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     private bool PageConnected => glass?.CoreWebView2 != null || browserActive;
 
     // Every message for the page goes through here, whichever way the page is shown.
@@ -62,7 +82,7 @@ public partial class LauncherForm
         int port = ((IPEndPoint)browserListener.LocalEndpoint).Port;
         _ = Task.Run(() => AcceptBrowserClients(ui));
         string url = $"http://127.0.0.1:{port}/{browserSecret}/launcher.html";
-        BrowserLog($"Launcher {LauncherVersion} ({Environment.ProcessPath}); wine={RunningOnWine()}; " +
+        BrowserLog($"Launcher {LauncherVersion} ({Environment.ProcessPath}); wine={RunningOnWine()}; mac={RunningOnMac()}; " +
                    $"viewer={(File.Exists(Path.Combine(AppContext.BaseDirectory, "Viewer", "ReStreetViewer.exe")) ? "found" : "missing")}");
         bool appWindow = false;
         try
@@ -186,8 +206,9 @@ public partial class LauncherForm
     private bool OpenAppWindow(string url)
     {
         // The viewer is for Wine/Proton only. On Windows nothing below changes (RESTREET_VIEWER=1 forces it, for testing).
-        if ((RunningOnWine() || Environment.GetEnvironmentVariable("RESTREET_VIEWER") == "1") && OpenViewer(url)) return true;
+        if ((RunningOnWine() || Environment.GetEnvironmentVariable("RESTREET_VIEWER") == "1") && !RunningOnMac() && OpenViewer(url)) return true;
         string size = $"--window-size={Width},{Height}";
+        if (RunningOnMac()) return false;  // no Linux browsers to look for: the Mac's default browser opens the page
         if (RunningOnWine())
         {
             var unix = new List<string>();

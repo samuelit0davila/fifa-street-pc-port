@@ -1235,9 +1235,14 @@ function renderTours(list) {
     const rounds = t.rounds.map((r, i) => '<div class="bround"><span class="rh">' + roundName(t, i) + '</span><div class="bms">' + r.map(m => '<div class="bm">' +
       [m.a, m.b].map((n, k) => '<div class="' + (n && n === m.winner ? 'w' : '') + (n && sameName(n, me) ? ' me' : '') + '"><span>' + esc(n || '—') +
         '</span><span class="sc">' + score(m, k) + '</span></div>').join('') + '</div>').join('') + '</div></div>').join('');
-    const mine = t.me_checked ? '<span><b>&#10003;</b> <span>Checked in</span></span>' : t.me_signed ? '<span><b>&#10003;</b> <span>Signed up</span></span>' : '';
+    // During check-in the count that matters is who checked in (only they play); a signed player who has not yet sees it.
+    const checkin = t.state === 'open' && now >= t.checkin;
+    const mine = t.me_checked ? '<span><b>&#10003;</b> <span>Checked in</span></span>'
+      : t.me_signed ? (checkin ? '<span class="state live">Check in now</span>' : '<span><b>&#10003;</b> <span>Signed up</span></span>') : '';
+    const count = checkin ? '<span><b>' + t.checked + '/' + t.size + '</b> <span>checked in</span></span><span><b>' + t.signed + '</b> <span>signed up</span></span>'
+      : '<span><b>' + (t.state === 'open' ? t.signed : t.checked) + '/' + t.size + '</b> <span>players</span></span>';
     return '<div class="tour"><div class="th"><h4>' + esc(t.name) + '</h4>' + state + '<div class="meta"><span><b>' + esc(when(t.start)) + '</b></span><span>' +
-      esc(MODE[t.mode] || t.mode) + '</span><span><b>' + (t.state === 'open' ? t.signed : t.checked) + '/' + t.size + '</b> <span>players</span></span>' +
+      esc(MODE[t.mode] || t.mode) + '</span>' + count + (t.real_teams !== false ? '<span>Real teams only</span>' : '') +
       (t.state === 'open' ? mine : '') + '</div><div class="acts">' + acts + '</div></div>' + (rounds ? '<div class="bracket">' + rounds + '</div>' : '') +
       (t.champion ? '<div class="champ"><span>Champion</span> <b>' + esc(t.champion) + '</b></div>' : '') + '</div>';
   }).join('');

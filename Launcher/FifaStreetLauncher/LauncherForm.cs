@@ -153,7 +153,8 @@ public partial class LauncherForm : Form, ISceneHost, IUiScaled
         scaler.Capture();
         // Stay invisible until the new page has loaded, so the classic controls underneath never flash on screen.
         if (Environment.GetEnvironmentVariable("RESTREET_CLASSIC_UI") != "1") Opacity = 0;
-        Shown += (_, _) => { InitGlassUi(); _ = CheckForUpdateAsync(); };
+        // Direct play asks for updates itself, before the game starts (StartDirect).
+        Shown += (_, _) => { InitGlassUi(); if (!closeAfterGame) { StartUpdateChecks(); BeginInvoke(WarnOneDriveOnce); } };
     }
 
     // Layout on an 8 px grid (design pixels, window 1250 x 720): left column margin 48; glass sheet
@@ -1071,7 +1072,24 @@ displayModeBox.SelectedIndexChanged += (_, _) => { UpdateRefreshRates(); UpdateS
         Opacity = 0;
         StartPosition = FormStartPosition.Manual;
         Location = new Point(-32000, -32000);
-        Shown += (_, _) => LaunchGame();
+        Shown += async (_, _) =>
+        {
+            // The direct-play shortcut never showed an update (hidden window, the game already running): look first,
+            // briefly, and when there is one open the launcher with the offer instead of the game.
+            using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            if (await FindUpdateAsync(wait.Token))
+            {
+                closeAfterGame = false;
+                ShowInTaskbar = true;
+                Opacity = 1;
+                CenterToScreen();
+                Activate();
+                await Task.Delay(1500);  // the page is loading in the window that just appeared
+                await OfferUpdateAsync();
+                return;
+            }
+            LaunchGame();
+        };
     }
 
     private void CreateDesktopShortcut()
@@ -1438,6 +1456,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
 
             if (!deck) ApplyMonitorRefresh(monitor, refresh, fullscreen ? width : 0, fullscreen ? height : 0);
             EnsureStadiumThumbs(Path.GetDirectoryName(exe)!, gameRoot);
+            var started = DateTime.UtcNow;
             using var process = Process.Start(startInfo);
             gameRunning = process != null;
             gameProcess = process;
@@ -1455,6 +1474,7 @@ startInfo.Environment["REX_DRAW_RESOLUTION_SCALE_Y"] =
                 await process.WaitForExitAsync();
                 OnSessionEnded(perfReport, logFile, perfSettings, process.ExitCode);
                 UpdateStatus(ReadyText(), true);
+                SuggestD3D12AfterVulkanCrash(graphicsApi, process.ExitCode, DateTime.UtcNow - started);
             }
         }
         catch (Exception ex)

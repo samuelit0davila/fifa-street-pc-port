@@ -240,6 +240,8 @@ internal sealed partial class Launcher
         "tournament_full" => "The tournament is full",
         "not_signed_up" => "Sign up first",
         "checkin_not_open" => "Check-in opens 10 minutes before the start",
+        "real_team_required" => "Tournaments are played with real teams: pick a club or a national team",
+        "already_in_match" => "You already have a match waiting: play it first",
         "unknown_action" or "route_not_found" => "This server does not have competitive play yet",
         _ => "Could not do that: " + code,
     };
