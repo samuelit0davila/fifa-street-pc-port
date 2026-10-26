@@ -6,7 +6,12 @@ namespace FifaStreetLauncher.Linux;
 internal sealed partial class Launcher
 {
     // ---------- Social (players, friends, chat): HTTP to the player's own server with their name and key ----------
-    private static readonly HttpClient SocialHttp = new() { Timeout = TimeSpan.FromSeconds(6) };
+    // The User-Agent tells the server which launcher version a player uses (its personal-key log).
+    private static readonly HttpClient SocialHttp = new()
+    {
+        Timeout = TimeSpan.FromSeconds(6),
+        DefaultRequestHeaders = { { "User-Agent", "ReStreet-Linux-Launcher/" + typeof(Launcher).Assembly.GetName().Version!.ToString(3) } },
+    };
     private DateTime lastBackgroundSocial = DateTime.MinValue;
 
     // One retry: a single dropped connection (a busy moment on the server, Wi-Fi) must not look like an outage.

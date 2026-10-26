@@ -8,11 +8,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>restreet-launcher</AssemblyName>
     <RootNamespace>FifaStreetLauncher.Linux</RootNamespace>
-    <Version>2.1.3</Version>
+    <Version>2.1.4</Version>
     <InvariantGlobalization>true</InvariantGlobalization>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Photino.NET" Version="4.0.16" />
+    <!-- The personal online key backup and recovery code, shared with the Windows launcher. -->
+    <Compile Include="..\FifaStreetLauncher\PlayerKey.cs" Link="PlayerKey.cs" />
     <!-- The same page as the Windows launcher: one ui folder for both. -->
     <None Include="..\FifaStreetLauncher\ui\**" LinkBase="ui" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="ui\linux-setup.html" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

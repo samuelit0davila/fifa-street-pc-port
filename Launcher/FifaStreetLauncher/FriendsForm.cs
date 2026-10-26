@@ -189,7 +189,7 @@ internal sealed class FriendsForm : Form, ISceneHost, IUiScaled
     const int SheetX = 480, SheetY = 32, SheetW = 422, SheetH = 546, Pad = 24;
     const int ContentX = SheetX + Pad, ContentW = SheetW - 2 * Pad;
 
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5) };
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(5), DefaultRequestHeaders = { { "User-Agent", "ReStreetLauncher/" + LauncherForm.LauncherVersion } } };
 
     readonly string server, me, key;
     readonly TextBox addBox = new();
