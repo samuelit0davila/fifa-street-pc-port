@@ -85,6 +85,11 @@
     'Add friends from the Online list': ['Adicione amigos pela lista Online', 'Añade amigos desde la lista En línea', 'Ajoutez des amis depuis la liste En ligne',
       'Füge Freunde aus der Online-Liste hinzu', 'Aggiungi amici dalla lista Online'],
     'No requests': ['Nenhum pedido', 'Sin solicitudes', 'Aucune demande', 'Keine Anfragen', 'Nessuna richiesta'],
+    'Away': ['Ausente', 'Ausente', 'Absent', 'Abwesend', 'Assente'],
+    'In the menus': ['Nos menus', 'En los menús', 'Dans les menus', 'In den Menüs', 'Nei menu'],
+    'Looking for a match': ['Procurando partida', 'Buscando partida', 'Cherche un match', 'Sucht ein Spiel', 'Cerca partita'],
+    'Nobody is looking for a match right now': ['Ninguém está procurando partida agora', 'Nadie está buscando partida ahora', 'Personne ne cherche de match pour le moment', 'Gerade sucht niemand ein Spiel', 'Nessuno sta cercando una partita ora'],
+    'Choose how other players see you': ['Escolha como os outros jogadores veem você', 'Elige cómo te ven los demás jugadores', 'Choisis comment les autres joueurs te voient', 'Wähle, wie andere Spieler dich sehen', 'Scegli come ti vedono gli altri giocatori'],
     'Nobody online': ['Ninguém online', 'Nadie en línea', 'Personne en ligne', 'Niemand online', 'Nessuno online'],
     'Wants to be your friend': ['Quer ser seu amigo', 'Quiere ser tu amigo', 'Veut être votre ami', 'Möchte dein Freund sein', 'Vuole essere tuo amico'],
     'Request sent': ['Pedido enviado', 'Solicitud enviada', 'Demande envoyée', 'Anfrage gesendet', 'Richiesta inviata'],
@@ -510,6 +515,11 @@
     "signed up": ["inscritos", "inscritos", "inscrits", "angemeldet", "iscritti"],
     "Real teams only": ["Só times reais", "Solo equipos reales", "Équipes réelles uniquement", "Nur echte Teams", "Solo squadre reali"],
     "Tournaments are played with real teams: pick a club or a national team": ["Os torneios são jogados com times reais: escolha um clube ou uma seleção", "Los torneos se juegan con equipos reales: elige un club o una selección", "Les tournois se jouent avec des équipes réelles : choisis un club ou une sélection", "Turniere werden mit echten Teams gespielt: wähle einen Verein oder eine Nationalmannschaft", "I tornei si giocano con squadre reali: scegli un club o una nazionale"],
+    "Ranked matches and tournaments are played with real teams: pick a club or a national team": ["Partidas ranqueadas e torneios são jogados com times reais: escolha um clube ou uma seleção", "Las partidas clasificatorias y los torneos se juegan con equipos reales: elige un club o una selección", "Les matchs classés et les tournois se jouent avec des équipes réelles : choisis un club ou une sélection", "Ranglistenspiele und Turniere werden mit echten Teams gespielt: wähle einen Verein oder eine Nationalmannschaft", "Le partite classificate e i tornei si giocano con squadre reali: scegli un club o una nazionale"],
+    "Ranked matches are played with real teams: pick a club or a national team.": ["As partidas ranqueadas são jogadas com times reais: escolha um clube ou uma seleção.", "Las partidas clasificatorias se juegan con equipos reales: elige un club o una selección.", "Les matchs classés se jouent avec des équipes réelles : choisis un club ou une sélection.", "Ranglistenspiele werden mit echten Teams gespielt: wähle einen Verein oder eine Nationalmannschaft.", "Le partite classificate si giocano con squadre reali: scegli un club o una nazionale."],
+    "Update ReStreet to play online matches (the new version unlocks every trick for everyone)": ["Atualize o ReStreet para jogar partidas online (a nova versão desbloqueia todos os truques para todos)", "Actualiza ReStreet para jugar partidas online (la nueva versión desbloquea todos los trucos para todos)", "Mets ReStreet à jour pour jouer en ligne (la nouvelle version débloque tous les gestes pour tout le monde)", "Aktualisiere ReStreet, um online zu spielen (die neue Version schaltet alle Tricks für alle frei)", "Aggiorna ReStreet per giocare online (la nuova versione sblocca tutti i trick per tutti)"],
+    "Pick a team first": ["Escolha um time primeiro", "Elige un equipo primero", "Choisis d'abord une équipe", "Wähle zuerst ein Team", "Scegli prima una squadra"],
+    "Pick a team": ["Escolha um time", "Elige un equipo", "Choisis une équipe", "Team wählen", "Scegli una squadra"],
     "You already have a match waiting: play it first": ["Você já tem uma partida esperando: jogue-a primeiro", "Ya tienes un partido esperando: juégalo primero", "Tu as déjà un match qui t'attend : joue-le d'abord", "Auf dich wartet schon ein Spiel: spiel es zuerst", "Hai già una partita in attesa: giocala prima"],
     "Final": ["Final", "Final", "Finale", "Finale", "Finale"],
     "Semi-finals": ["Semifinais", "Semifinales", "Demi-finales", "Halbfinale", "Semifinali"],
@@ -531,6 +541,9 @@
   };
   // Texts with a name or a number inside: $1 is the captured part as is, $T1 the captured part translated.
   const PATTERNS = [
+    [/^Playing (.+)$/, ['Jogando $1', 'Jugando $1', 'En match · $1', 'Spielt $1', 'In partita · $1']],
+    [/^Searching · (.+)$/, ['Procurando · $1', 'Buscando · $1', 'Recherche · $1', 'Sucht · $1', 'Cerca · $1']],
+    [/^Posted (.+?)( \(private\))? · (.+)$/, ['Publicou $1$2 · $3', 'Publicó $1$2 · $3', 'A publié $1$2 · $3', 'Hat $1$2 erstellt · $3', 'Ha pubblicato $1$2 · $3']],
     [/^The save from (.+) becomes your save again\. The one in use now is kept with the deleted saves, and a full backup is made first\. Close the game before you restore\.$/, [
       "O save de $1 volta a ser o seu save. O que está em uso agora fica guardado com os saves apagados, e antes é feita uma cópia de segurança completa. Feche o jogo antes de restaurar.",
       "La partida del $1 vuelve a ser tu partida. La que usas ahora se guarda con las partidas borradas, y antes se hace una copia de seguridad completa. Cierra el juego antes de restaurar.",

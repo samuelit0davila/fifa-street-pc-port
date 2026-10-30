@@ -420,7 +420,7 @@ public partial class LauncherForm
             }
             else if (cmd == "friend")
             {
-                using var r = await PostJson(server, "/v1/friends", new { me = name, key, action = Str("action"), other = Str("other") });
+                using var r = await PostJson(server, "/v1/friends", new { me = name, key, action = Str("action"), other = Str("other"), value = Str("value") });
                 if (r != null && r.RootElement.TryGetProperty("result", out var fr) && fr.ValueKind == JsonValueKind.String)
                     error = fr.GetString() switch { "unknown" => $"No player called {Str("other")}", "self" => "You can't add yourself", _ => null };
             }
@@ -503,6 +503,7 @@ public partial class LauncherForm
                             "in_game" => "Playing " + (p.TryGetProperty("mode", out var md) ? md.GetString() : ""),
                             "searching" => "Searching · " + (p.TryGetProperty("mode", out var md2) ? md2.GetString() : "") +
                                 (waited.TryGetValue(p.GetProperty("name").GetString() ?? "", out int w) ? $" · {w / 60}:{w % 60:00}" : ""),
+                            "away" => "Away",
                             _ => "In the menus",
                         },
                     }).ToArray()
@@ -582,8 +583,9 @@ public partial class LauncherForm
         "tournament_full" => "The tournament is full",
         "not_signed_up" => "Sign up first",
         "checkin_not_open" => "Check-in opens 10 minutes before the start",
-        "real_team_required" => "Tournaments are played with real teams: pick a club or a national team",
+        "real_team_required" => "Ranked matches and tournaments are played with real teams: pick a club or a national team",
         "already_in_match" => "You already have a match waiting: play it first",
+        "update_required" => "Update ReStreet to play online matches (the new version unlocks every trick for everyone)",
         "unknown_action" or "route_not_found" => "This server does not have competitive play yet",
         _ => "Could not do that: " + code,
     };
@@ -603,6 +605,7 @@ public partial class LauncherForm
         "wrong_password" => "Wrong password for that game",
         "not_friends" => "You can only invite your friends",
         "not_in_room" => "Post a match first, then invite",
+        "update_required" => "Update ReStreet to play online matches (the new version unlocks every trick for everyone)",
         _ => "Could not do that: " + code,
     };
 

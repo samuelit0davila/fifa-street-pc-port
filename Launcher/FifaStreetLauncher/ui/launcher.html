@@ -49,6 +49,9 @@ button{font:inherit;color:inherit}
 .av{width:36px;height:36px;flex:none;border-radius:50%;background:var(--stock-ink);color:var(--stock);display:grid;place-items:center;font:800 18px var(--display)}
 .side .me b{display:block;font:800 21px/1 var(--display);letter-spacing:.8px;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .side .me small{display:flex;align-items:center;font:700 12px Archivo;color:#246338;margin-top:3px}
+.dot.away{background:#f5b301}
+.side .me .stbtn{display:block;margin-top:5px;padding:2px 9px;border-radius:99px;border:1px solid var(--stock-muted);background:transparent;color:var(--stock-ink);font:700 11px Archivo;letter-spacing:.8px;text-transform:uppercase;cursor:pointer}
+.side .me .stbtn:hover{border-color:var(--stock-ink)}
 .side .me .tag{display:block;font:700 11px Archivo;letter-spacing:1.2px;color:var(--stock-muted);margin-top:4px;text-transform:uppercase}
 .side .me>div{min-width:0}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);display:inline-block;margin-right:6px;flex:none}
@@ -246,7 +249,7 @@ body.deck .old-only,body:not(.deck) .deck-only{display:none!important}
 .person:hover{background:var(--panel)}
 .pav{position:relative;width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;font:800 14px Archivo;color:#fff}
 .pav::after{content:"";position:absolute;right:-1px;bottom:-1px;width:10px;height:10px;border-radius:50%;border:2px solid var(--night);background:#6b7280}
-.pav.online::after{background:var(--ok)}.pav.game::after{background:var(--brand)}
+.pav.online::after{background:var(--ok)}.pav.game::after{background:var(--brand)}.pav.away::after{background:#f5b301}
 .pn{flex:1;min-width:0}.pn b{display:block;font-size:13.5px}.pn small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .pact{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--seam-2);background:var(--panel-2);color:#fff;cursor:pointer;font-size:14px;display:grid;place-items:center}
 .pact:hover{border-color:var(--brand)}.pact.ok{background:var(--brand);border-color:var(--brand);color:#111}.pact[disabled]{opacity:.55;cursor:default}
@@ -395,7 +398,7 @@ body.deck .old-only,body:not(.deck) .deck-only{display:none!important}
     <button type="button" class="nav" data-p="p-advanced"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="lb">Advanced</span></button>
     <div class="spacer"></div>
     <div class="tg side-tg" data-id="onlineMode" tabindex="0" role="switch" title="Off: the game starts offline, with no server, friends or rooms."><div>Play online</div><div class="sw"></div></div>
-    <div class="me"><div class="av" id="meav">?</div><div><b id="mename">Offline</b><small><span class="dot" id="medot"></span><span id="meserver">Not set up</span></small><span class="tag" id="ver">V2.1 &middot; ONLINE BETA</span></div></div>
+    <div class="me"><div class="av" id="meav">?</div><div><b id="mename">Offline</b><small><span class="dot" id="medot"></span><span id="meserver">Not set up</span></small><button type="button" class="stbtn" id="meStatus" title="Choose how other players see you">Online</button><span class="tag" id="ver">V2.1 &middot; ONLINE BETA</span></div></div>
     <div class="credits"><h4>CREDITS</h4><div>Performance &middot; <b>AnDr3zF</b></div><div>PT-BR translation &middot; <b>Eze_.</b></div></div>
   </aside>
 
@@ -433,11 +436,12 @@ body.deck .old-only,body:not(.deck) .deck-only{display:none!important}
 
   <section class="page" id="p-social">
     <div class="people">
-      <div class="ptabs"><div class="ptab on" data-t="t-online" tabindex="0">Online <span class="badge" id="bOnline">0</span></div><div class="ptab" data-t="t-friends" tabindex="0">Friends</div><div class="ptab" data-t="t-req" tabindex="0">Requests <span class="badge" id="bReq" style="display:none"></span></div></div>
+      <div class="ptabs"><div class="ptab on" data-t="t-online" tabindex="0">Online <span class="badge" id="bOnline">0</span></div><div class="ptab" data-t="t-friends" tabindex="0">Friends</div><div class="ptab" data-t="t-req" tabindex="0">Requests <span class="badge" id="bReq" style="display:none"></span></div><div class="ptab" data-t="t-seek" tabindex="0">Looking for a match <span class="badge" id="bSeek" style="display:none"></span></div></div>
       <form id="addForm" style="display:flex;gap:8px"><input class="search" id="addName" maxlength="15" placeholder="Add a friend by name" autocomplete="off"><button class="pact ok" style="height:41px;width:41px" aria-label="Add friend"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></form>
       <div class="plist" id="t-online"></div>
       <div class="plist" id="t-friends" style="display:none"></div>
       <div class="plist" id="t-req" style="display:none"></div>
+      <div class="plist" id="t-seek" style="display:none"></div>
     </div>
     <div class="chat">
       <div class="chathead"><div class="ctabs" id="ctabs"></div><small id="chatNote">be nice, chat is moderated</small></div>
@@ -850,6 +854,18 @@ document.querySelector('[data-p=p-matches]').addEventListener('click', () => { s
   requestAnimationFrame(() => { const t = document.querySelector('.spic.on'); if (t) $('gPics').scrollLeft = t.offsetLeft - $('gPics').offsetLeft - 16; }); });
 document.querySelectorAll('.ptab').forEach(t => t.onclick = () => { document.querySelectorAll('.ptab').forEach(x => x.classList.toggle('on', x === t));
   document.querySelectorAll('.plist').forEach(l => l.style.display = l.id === t.dataset.t ? 'flex' : 'none'); });
+// Online / Away, picked in the profile card: kept on this PC and sent again when the server shows otherwise (a
+// server restart forgets it). A match or a search shows over it.
+let wantAway = false, statusSentAt = 0;
+try { wantAway = localStorage.getItem('restreet.status') === 'away'; } catch (e) { /* no storage: Online */ }
+function sendStatus() { statusSentAt = Date.now(); send({cmd: 'friend', action: 'status', value: wantAway ? 'away' : 'online'}); }
+function showStatus() { $('meStatus').textContent = wantAway ? 'Away' : 'Online'; $('medot').classList.toggle('away', wantAway); }
+$('meStatus').onclick = () => {
+  wantAway = !wantAway;
+  try { localStorage.setItem('restreet.status', wantAway ? 'away' : 'online'); } catch (e) { /* kept for this session only */ }
+  showStatus(); sendStatus();
+};
+showStatus();
 $('addForm').onsubmit = e => { e.preventDefault(); const n = $('addName').value.trim(); if (n) { send({cmd: 'friend', action: 'add', other: n}); $('addName').value = ''; } };
 $('compose').onsubmit = e => { e.preventDefault(); const v = $('say').value.trim(); if (!v) return; send({cmd: 'chatSend', channel, text: v}); $('say').value = ''; };
 
@@ -888,25 +904,28 @@ showMyTeam();
 let tpPick = 0, tpLeague = '', tpDone = null;
 function tpRender() {
   const q = $('tpSearch').value.trim().toLowerCase();
-  const ids = [0, ...Object.values(TEAMS).flat().map(([id]) => id)].filter(id =>
+  const real = tpDone && tpDone.real;  // ranked and real-team tournaments: no World Tour team
+  const ids = [...(real ? [] : [0]), ...Object.values(TEAMS).flat().map(([id]) => id)].filter(id =>
     (!tpLeague || (tpLeague === 'wt' ? !id : LEAGUE_OF[id] === tpLeague)) && (!q || (id ? TEAM_NAME[id] : 'my world tour team').toLowerCase().includes(q)));
   $('tpGrid').innerHTML = ids.map(id => '<button type="button" class="tpt' + (id === tpPick ? ' on' : '') + '" role="option" aria-selected="' + (id === tpPick) +
     '" data-team="' + id + '">' + crest(id) + '<span>' + esc(id ? TEAM_NAME[id] : 'My World Tour team') + '</span></button>').join('') ||
     '<div class="tpempty">No team matches your search.</div>';
-  $('tpChips').innerHTML = [['', 'All'], ['wt', 'World Tour'], ...Object.keys(TEAMS).map(g => [g, g])].map(([k, n]) =>
+  $('tpChips').innerHTML = [['', 'All'], ...(real ? [] : [['wt', 'World Tour']]), ...Object.keys(TEAMS).map(g => [g, g])].map(([k, n]) =>
     '<button type="button" class="tpchip' + (k === tpLeague ? ' on' : '') + '" data-league="' + esc(k) + '">' + esc(n) + '</button>').join('');
-  $('tpOk').textContent = tpDone && tpDone.join ? 'Join with ' + (tpPick ? TEAM_NAME[tpPick] : 'my World Tour team') : 'Use this team';
+  $('tpOk').textContent = real && !tpPick ? 'Pick a team first' : tpDone && tpDone.join ? 'Join with ' + (tpPick ? TEAM_NAME[tpPick] : 'my World Tour team') : 'Use this team';
+  $('tpOk').disabled = !!real && !tpPick;
 }
 function openTeamPicker(done, title, sub) {
-  tpPick = myTeam; tpLeague = ''; tpDone = done; $('tpSearch').value = '';
+  tpPick = 'pick' in done ? done.pick : myTeam; tpLeague = ''; tpDone = done; $('tpSearch').value = '';
   $('tpTitle').textContent = title; $('tpSub').textContent = sub;
   tpRender(); $('teamPick').classList.remove('gone');
   setTimeout(() => { const on = $('tpGrid').querySelector('.tpt.on'); if (on) { on.scrollIntoView({block: 'nearest'}); on.focus(); } else $('tpSearch').focus(); }, 30);
 }
 function closeTeamPicker(ok) {
+  if (ok && tpDone && tpDone.real && !tpPick) return;  // real teams only: wait for a pick
   $('teamPick').classList.add('gone');
   const done = tpDone; tpDone = null;
-  if (ok && done) { setMyTeam(tpPick); done.run(tpPick); }
+  if (ok && done) { (done.store || setMyTeam)(tpPick); done.run(tpPick); }
 }
 $('tpGrid').onclick = e => { const t = e.target.closest('.tpt'); if (!t) return; tpPick = Number(t.dataset.team); tpRender(); const on = $('tpGrid').querySelector('.tpt.on'); if (on) on.focus(); };
 $('tpGrid').ondblclick = e => { if (e.target.closest('.tpt')) closeTeamPicker(true); };
@@ -983,6 +1002,7 @@ const onTickets = e => {
 };
 $('games').addEventListener('click', onTickets);
 $('hList').addEventListener('click', onTickets);
+$('t-seek').addEventListener('click', onTickets);
 let gamesHtml = '', readyShown = 0, gameIsRunning = false, canInvite = null, invShown = 0, pendingInvite = null, myRoomNow = null;
 const invited = new Set(), invDismissed = new Set();
 $('invJoin').onclick = () => { const i = invShown; if (!i) return; $('inviteCard').hidden = true; invDismissed.add(i.room);
@@ -1046,9 +1066,25 @@ function renderSocial(d) {
   $('bOnline').textContent = (d.players || []).length;
   const invBtn = n => canInvite && !canInvite.includes(n.toLowerCase())
     ? '<button class="pact inv" data-invite="' + esc(n) + '"' + (invited.has(n) ? ' disabled>Invited' : '>Invite') + '</button>' : '';
-  $('t-online').innerHTML = (d.players || []).map(p => person(p.name, p.note, p.state === 'in_game' ? 'game' : 'online',
+  const stClass = st => st === 'in_game' || st === 'searching' ? 'game' : st === 'away' ? 'away' : 'online';
+  $('t-online').innerHTML = (d.players || []).map(p => person(p.name, p.note, stClass(p.state),
     p.name.toLowerCase() === (d.me || '').toLowerCase() ? '' : friendNames.has(p.name.toLowerCase()) ? '<button class="pact" data-dm="' + esc(p.name) + '" aria-label="Send message">' + ICO.msg + '</button>' : pendingNames.has(p.name.toLowerCase()) ? sentBtn : '<button class="pact" data-add="' + esc(p.name) + '" aria-label="Add friend">' + ICO.add + '</button>')).join('') || '<div class="sys">Nobody online</div>';
-  $('t-friends').innerHTML = (d.friends || []).map(f => person(f.name, f.online ? 'Online' : 'Offline', f.online ? 'online' : '', (f.online ? invBtn(f.name) : '') + '<button class="pact" data-dm="' + esc(f.name) + '" aria-label="Send message">' + ICO.msg + '</button>')).join('') || '<div class="sys">Add friends from the Online list</div>';
+  const live = Object.fromEntries((d.players || []).map(p => [p.name.toLowerCase(), p]));
+  const fNote = f => !f.online ? 'Offline' : live[f.name.toLowerCase()] ? live[f.name.toLowerCase()].note : 'Online';
+  const fClass = f => !f.online ? '' : live[f.name.toLowerCase()] ? stClass(live[f.name.toLowerCase()].state) : 'online';
+  $('t-friends').innerHTML = (d.friends || []).map(f => person(f.name, fNote(f), fClass(f), (f.online ? invBtn(f.name) : '') + '<button class="pact" data-dm="' + esc(f.name) + '" aria-label="Send message">' + ICO.msg + '</button>')).join('') || '<div class="sys">Add friends from the Online list</div>';
+  const meNow = live[(d.me || '').toLowerCase()];
+  if (meNow && (meNow.state === 'online' || meNow.state === 'away') && (meNow.state === 'away') !== wantAway && Date.now() - statusSentAt > 10000) sendStatus();
+  // Looking for a match: players searching in the game, and posted matches still waiting for a player.
+  const searching = (d.players || []).filter(p => p.state === 'searching');
+  const waiting = (social.rooms || []).filter(r => r.players.length < r.seats && !(social.myRoom && social.myRoom.id === r.id));
+  $('t-seek').innerHTML = searching.map(p => person(p.name, p.note, 'game', '')).join('') +
+    waiting.map(r => person(r.host, 'Posted ' + (MODE[r.mode] || r.mode) + (r.private ? ' (private)' : '') + ' · ' + r.name, 'online',
+      '<button type="button" class="pact inv" data-join="' + r.id + '"' + (r.private ? ' data-private="1"' : '') + ' data-host="' + esc(r.host) +
+      '" data-hostteam="' + esc(teamLabel((r.teams || {})[r.host])) + '">Join</button>')).join('') ||
+    '<div class="sys">Nobody is looking for a match right now</div>';
+  const seekCount = searching.length + waiting.length;
+  $('bSeek').style.display = seekCount ? '' : 'none'; $('bSeek').textContent = seekCount;
   const req = d.requests || [];
   if (d.friends) $('hStands').innerHTML = d.friends.filter(f => f.online).map(f => person(f.name, 'Online', 'online', invBtn(f.name) + '<button class="pact" data-dm="' + esc(f.name) + '" aria-label="Send message">' + ICO.msg + '</button>')).join('') ||
     '<div class="empty">Add friends from the Online list</div>';
@@ -1211,15 +1247,23 @@ function compNote(text) {
   $('cNote').textContent = text || ''; clearTimeout(window.cNoteTimer);
   if (text) window.cNoteTimer = setTimeout(() => { $('cNote').textContent = ''; }, 8000);
 }
+// Ranked is played with real teams only (a World Tour team can be levelled to 99): its own team, never team 0.
+let rankTeam = 0;
+try { rankTeam = Number(localStorage.getItem('restreet.rankteam')) || 0; } catch (e) { /* no storage: picked again */ }
+if (!TEAM_NAME[rankTeam]) rankTeam = TEAM_NAME[myTeam] ? myTeam : 0;
+function setRankTeam(id) { rankTeam = id; try { localStorage.setItem('restreet.rankteam', String(id)); } catch (e) { /* kept for this session only */ } }
 function showCompTeam() {
-  $('cTeamBtn').innerHTML = crest(myTeam) + '<span class="tn"><small>YOUR TEAM</small><span>' + esc(myTeam ? TEAM_NAME[myTeam] : 'My World Tour team') + '</span></span>';
+  $('cTeamBtn').innerHTML = crest(rankTeam) + '<span class="tn"><small>YOUR TEAM</small><span>' + esc(rankTeam ? TEAM_NAME[rankTeam] : 'Pick a team') + '</span></span>';
 }
 showCompTeam();
-$('cTeamBtn').onclick = () => openTeamPicker({join: false, run: showCompTeam}, 'Pick your team', 'Choose the team you will play ranked matches with.');
+const pickRankTeam = run => openTeamPicker({join: false, real: true, pick: rankTeam, store: setRankTeam, run: () => { showCompTeam(); if (run) run(); }},
+  'Pick your team', 'Ranked matches are played with real teams: pick a club or a national team.');
+$('cTeamBtn').onclick = () => pickRankTeam();
+const rankQueue = () => { send({cmd: 'comp', action: 'queue', mode: $('cMode').value, team: rankTeam}); setTimeout(() => send({cmd: 'comp', action: 'me'}), 300); };
 $('cPlay').onclick = () => {
-  if (compMe && compMe.queue) send({cmd: 'comp', action: 'cancel'});
-  else send({cmd: 'comp', action: 'queue', mode: $('cMode').value, team: myTeam});
-  setTimeout(() => send({cmd: 'comp', action: 'me'}), 300);
+  if (compMe && compMe.queue) { send({cmd: 'comp', action: 'cancel'}); setTimeout(() => send({cmd: 'comp', action: 'me'}), 300); }
+  else if (!rankTeam) pickRankTeam(rankQueue);
+  else rankQueue();
 };
 function renderRank(d) {
   compMe = d;
@@ -1272,7 +1316,7 @@ function renderTours(list) {
       : t.state === 'running' ? '<span class="state live">Live</span>' : t.state === 'done' ? '<span class="state done">Finished</span>' : '<span class="state">Cancelled</span>';
     let acts = '';
     if (t.state === 'open') {
-      if (!t.me_signed) acts = '<button type="button" class="go" data-tour="signup" data-id="' + esc(t.id) + '">Sign up</button>';
+      if (!t.me_signed) acts = '<button type="button" class="go" data-tour="signup" data-id="' + esc(t.id) + '"' + (t.real_teams !== false ? ' data-real="1"' : '') + '>Sign up</button>';
       else {
         if (!t.me_checked) acts += '<button type="button" class="go" data-tour="checkin" data-id="' + esc(t.id) + '"' +
           (now < t.checkin ? ' disabled title="Check-in opens 10 minutes before the start"' : '') + '>Check in</button>';
@@ -1298,7 +1342,7 @@ function renderTours(list) {
 $('cTours').onclick = e => {
   const b = e.target.closest('[data-tour]'); if (!b || b.disabled) return;
   const go = team => { send({cmd: 'comp', action: b.dataset.tour, id: b.dataset.id, team}); setTimeout(() => send({cmd: 'comp', action: 'tournaments'}), 300); };
-  if (b.dataset.tour === 'signup') openTeamPicker({join: false, run: go}, 'Sign up', 'Pick the team you will play the tournament with.');
+  if (b.dataset.tour === 'signup') openTeamPicker({join: false, real: !!b.dataset.real, run: go}, 'Sign up', 'Pick the team you will play the tournament with.');
   else go(myTeam);
 };
 function renderComp(d) {
