@@ -118,39 +118,42 @@ public partial class LauncherForm
             return "Could not make the backup (" + ex.Message + "): nothing was changed";
         }
 
-        // 2. The current saves go to _apagados the way the game moves a deleted save (their copies in _copia too).
+        // 2. The current saves go to _apagados the way the game moves a deleted save (their copies in _copia after 3).
         string current = Path.Combine(title, SaveType), headers = Path.Combine(title, HeadersDir, SaveType);
         long unix = new DateTimeOffset(now).ToUnixTimeSeconds();
         var moved = new List<(string Dir, string Header, string To, string Name)>();
-        if (Directory.Exists(current))
-            foreach (string dir in Directory.GetDirectories(current))
-            {
-                string curName = Path.GetFileName(dir);
-                string to = Path.Combine(trash, unix + "-" + curName);
-                if (Directory.Exists(to)) to += "-" + Guid.NewGuid().ToString("N")[..6];
-                Directory.CreateDirectory(to);
-                Directory.Move(dir, Path.Combine(to, "dados"));
-                string curHeader = Path.Combine(headers, curName + ".header");
-                if (File.Exists(curHeader)) File.Move(curHeader, Path.Combine(to, curName + ".header"));
-                moved.Add((dir, curHeader, to, curName));
-            }
-
-        // 3. The chosen save, copied back (it stays in _apagados too). A failure puts the current save back.
         string target = Path.Combine(current, name), targetHeader = Path.Combine(headers, name + ".header");
+        bool copying = false;  // before step 3, |target| can still be a current save of the same name: never delete it
         try
         {
+            if (Directory.Exists(current))
+                foreach (string dir in Directory.GetDirectories(current))
+                {
+                    string curName = Path.GetFileName(dir);
+                    string to = Path.Combine(trash, unix + "-" + curName);
+                    if (Directory.Exists(to)) to += "-" + Guid.NewGuid().ToString("N")[..6];
+                    string curHeader = Path.Combine(headers, curName + ".header");
+                    Directory.CreateDirectory(to);
+                    moved.Add((dir, curHeader, to, curName));
+                    Directory.Move(dir, Path.Combine(to, "dados"));
+                    if (File.Exists(curHeader)) File.Move(curHeader, Path.Combine(to, curName + ".header"));
+                }
+
+            // 3. The chosen save, copied back (it stays in _apagados too).
+            copying = true;
             CopyFolder(data, target);
             Directory.CreateDirectory(headers);
             File.Copy(header, targetHeader, true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            if (Directory.Exists(target)) Directory.Delete(target, true);
-            if (File.Exists(targetHeader)) File.Delete(targetHeader);
+            // A failure in step 2 or 3 puts back every current save that already left.
+            if (copying && Directory.Exists(target)) Directory.Delete(target, true);
+            if (copying && File.Exists(targetHeader)) File.Delete(targetHeader);
             foreach (var m in moved)
             {
-                Directory.Move(Path.Combine(m.To, "dados"), m.Dir);
-                string h = Path.Combine(m.To, m.Name + ".header");
+                string dados = Path.Combine(m.To, "dados"), h = Path.Combine(m.To, m.Name + ".header");
+                if (Directory.Exists(dados)) Directory.Move(dados, m.Dir);
                 if (File.Exists(h)) File.Move(h, m.Header);
                 Directory.Delete(m.To, true);
             }

@@ -192,27 +192,47 @@ internal sealed partial class Setup : IPageHost
         }
     }
 
+    // "ReStreet-2.1.10-Setup.exe" -> 2.1.10 (names sort wrong as text: "2.1.10" < "2.1.9"); anything else is 0.
+    internal static Version SetupVersion(string file)
+    {
+        string name = Path.GetFileName(file);
+        return name.StartsWith("ReStreet-", StringComparison.Ordinal) && name.EndsWith("-Setup.exe", StringComparison.Ordinal) &&
+               Version.TryParse(name["ReStreet-".Length..^"-Setup.exe".Length], out var v) ? v : new Version(0, 0);
+    }
+
+    private static string? NewestSetup(IEnumerable<string> dirs) =>
+        dirs.Where(Directory.Exists).SelectMany(d => Directory.GetFiles(d, "ReStreet-*-Setup.exe")).MaxBy(SetupVersion);
+
     // The setup: one beside the launcher (offline installs), or the latest release's, checked against its .sha256.
+    // One the player downloaded is used when it is that release's setup, or (no network) the newest one there.
     private async Task<string> GetSetup()
     {
-        foreach (string dir in new[] { AppContext.BaseDirectory, Path.Combine(AppContext.BaseDirectory, ".."), Path.Combine(Home, "Downloads"), Path.Combine(Home, "Transferências") })
-        {
-            if (!Directory.Exists(dir)) continue;
-            string? local = Directory.GetFiles(dir, "ReStreet-*-Setup.exe").OrderByDescending(f => f, StringComparer.Ordinal).FirstOrDefault();
-            if (local != null) { Step("Using " + Path.GetFileName(local), 1); return local; }
-        }
+        string? beside = NewestSetup(new[] { AppContext.BaseDirectory, Path.Combine(AppContext.BaseDirectory, "..") });
+        if (beside != null) { Step("Using " + Path.GetFileName(beside), 1); return beside; }
+        string[] downloads = { Path.Combine(Home, "Downloads"), Path.Combine(Home, "Transferências") };
         Step("Looking for the latest ReStreet release", 1);
         using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(30) };
         http.DefaultRequestHeaders.UserAgent.ParseAdd("ReStreet-Linux-Launcher");
-        var release = JsonNode.Parse(await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest"))!;
+        string releaseJson;
+        try { releaseJson = await http.GetStringAsync($"https://api.github.com/repos/{Repo}/releases/latest"); }
+        catch (Exception ex) when ((ex is HttpRequestException or TaskCanceledException) && NewestSetup(downloads) is not null)
+        {
+            string offline = NewestSetup(downloads)!;
+            Step("No connection to GitHub; using " + Path.GetFileName(offline), 1);
+            return offline;
+        }
+        var release = JsonNode.Parse(releaseJson)!;
         var assets = release["assets"]!.AsArray();
         string Url(string suffix) => assets.Select(a => a!).FirstOrDefault(a => a["name"]!.GetValue<string>().EndsWith(suffix, StringComparison.Ordinal))
             ?["browser_download_url"]?.GetValue<string>() ?? throw new InvalidOperationException("The latest release has no " + suffix + " file.");
         string exeUrl = Url("-Setup.exe"), shaUrl = Url("-Setup.exe.sha256");
         string cache = Path.Combine(Home, ".cache", "restreet");
         Directory.CreateDirectory(cache);
-        string file = Path.Combine(cache, Path.GetFileName(new Uri(exeUrl).LocalPath));
+        string fileName = Path.GetFileName(new Uri(exeUrl).LocalPath);
+        string file = Path.Combine(cache, fileName);
         string expected = (await http.GetStringAsync(shaUrl)).Split(' ', '\t', '\n')[0].Trim().ToLowerInvariant();
+        string? downloaded = downloads.Select(d => Path.Combine(d, fileName)).FirstOrDefault(f => File.Exists(f) && Sha256(f) == expected);
+        if (downloaded != null) { Step("Using " + fileName + " from " + Path.GetDirectoryName(downloaded), 15); return downloaded; }
         if (!File.Exists(file) || Sha256(file) != expected)
         {
             using var response = await http.GetAsync(exeUrl, HttpCompletionOption.ResponseHeadersRead);
