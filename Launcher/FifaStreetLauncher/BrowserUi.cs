@@ -251,7 +251,7 @@ public partial class LauncherForm
             Path.Combine(pf86, @"Microsoft\Edge\Application\msedge.exe"), Path.Combine(pf, @"Microsoft\Edge\Application\msedge.exe"),
             Path.Combine(pf, @"Google\Chrome\Application\chrome.exe"), Path.Combine(pf86, @"Google\Chrome\Application\chrome.exe"),
             Path.Combine(local, @"Google\Chrome\Application\chrome.exe"),
-            Path.Combine(pf, @"BraveSoftware\Brave-Browser\Applicationrave.exe"),
+            Path.Combine(pf, @"BraveSoftware\Brave-Browser\Application\brave.exe"),
         }.FirstOrDefault(File.Exists);
         if (exe == null) return false;
         Process.Start(new ProcessStartInfo(exe)

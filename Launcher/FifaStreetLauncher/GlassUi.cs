@@ -269,7 +269,9 @@ public partial class LauncherForm
                 if (!File.Exists(path)) continue;
                 var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
                 node["server"] = address;
-                File.WriteAllText(path, node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                // Written beside and then moved over: a crash mid-write must not leave online.json (name, key) broken.
+                File.WriteAllText(path + ".tmp", node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+                File.Move(path + ".tmp", path, true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
             {
