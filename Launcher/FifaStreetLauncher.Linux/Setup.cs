@@ -16,7 +16,7 @@ internal sealed partial class Setup : IPageHost
     // Regions the online patch offers (keep in sync with GlassUi.cs).
     private static readonly (string Name, string Address)[] Regions =
     {
-        ("Europe", "57.129.180.15"), ("South America", "216.238.113.7"),
+        ("Europe", "restreet-pt.duckdns.org"), ("South America", "216.238.113.7"),
     };
 
     [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9 _-]{1,13}[A-Za-z0-9_-]\z")]

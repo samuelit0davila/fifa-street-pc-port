@@ -29,7 +29,7 @@ internal sealed partial class Launcher : IPageHost
     // Regions the online patch offers (keep in sync with GlassUi.cs).
     private static readonly (string Name, string Address)[] Regions =
     {
-        ("Europe", "57.129.180.15"), ("South America", "216.238.113.7"),
+        ("Europe", "restreet-pt.duckdns.org"), ("South America", "216.238.113.7"),
     };
 
     private static readonly string[] ProfileNames = { "Balanced (default)", "Quality (strong PCs)", "Performance (weak PCs)", "Custom" };
@@ -114,6 +114,9 @@ internal sealed partial class Launcher : IPageHost
         if (deck) LoadDeckToml();
         // A reinstall wrote a new online.json: put this player's key back before anything signs in with it.
         PlayerKey.Sync(OnlineFiles());
+        // 2.1.5: the Europe server moved. A Linux install keeps its online.json when only the launcher is replaced
+        // (on Windows the setup rewrites it), so an install still on the old address follows the region here.
+        if (LoadOnlineConfig()?.Server == "57.129.180.15") SwitchServer(Regions[0].Address);
         UpdateEnabled();
         status = ReadyText();
     }
@@ -352,8 +355,10 @@ internal sealed partial class Launcher : IPageHost
                 int ping = -1, online = -1;
                 try
                 {
+                    // resolve first: a host name's DNS lookup (100-300 ms for DuckDNS once its 60 s TTL runs out) is not ping
+                    var ips = await System.Net.Dns.GetHostAddressesAsync(address).WaitAsync(TimeSpan.FromSeconds(3));
                     var watch = Stopwatch.StartNew();
-                    using (var tcp = new TcpClient()) { await tcp.ConnectAsync(address, 29812).WaitAsync(TimeSpan.FromSeconds(3)); }
+                    using (var tcp = new TcpClient()) { await tcp.ConnectAsync(ips, 29812).WaitAsync(TimeSpan.FromSeconds(3)); }
                     ping = (int)watch.ElapsedMilliseconds;
                     using var doc = JsonDocument.Parse(await http.GetStringAsync($"http://{address}:29812/v1/online"));
                     online = doc.RootElement.GetProperty("online").GetInt32();

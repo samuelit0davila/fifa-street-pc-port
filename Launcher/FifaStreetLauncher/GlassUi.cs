@@ -17,7 +17,7 @@ public partial class LauncherForm
     // Regions the online patch offers (keep in sync with build_online_patch.py --region).
     private static readonly (string Name, string Address)[] Regions =
     {
-        ("Europe", "57.129.180.15"), ("South America", "216.238.113.7"),
+        ("Europe", "restreet-pt.duckdns.org"), ("South America", "216.238.113.7"),
     };
 
     private WebView2? glass;
@@ -288,8 +288,10 @@ public partial class LauncherForm
                 int ping = -1, online = -1;
                 try
                 {
+                    // resolve first: a host name's DNS lookup (100-300 ms for DuckDNS once its 60 s TTL runs out) is not ping
+                    var ips = await System.Net.Dns.GetHostAddressesAsync(address).WaitAsync(TimeSpan.FromSeconds(3));
                     var watch = Stopwatch.StartNew();
-                    using (var tcp = new TcpClient()) { await tcp.ConnectAsync(address, 29812).WaitAsync(TimeSpan.FromSeconds(3)); }
+                    using (var tcp = new TcpClient()) { await tcp.ConnectAsync(ips, 29812).WaitAsync(TimeSpan.FromSeconds(3)); }
                     ping = (int)watch.ElapsedMilliseconds;
                     using var doc = JsonDocument.Parse(await http.GetStringAsync($"http://{address}:29812/v1/online"));
                     online = doc.RootElement.GetProperty("online").GetInt32();
